@@ -5,6 +5,9 @@ on:
   push:
     branches: [master]
 
+permissions:
+  contents: write
+
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -36,9 +39,19 @@ jobs:
         working-directory: android
         run: ./gradlew assembleRelease
 
-      - name: Upload APK
-        uses: actions/upload-artifact@v4
+      - name: Rename APK
+        run: |
+          mv android/app/build/outputs/apk/release/app-release.apk RevenuivaAI-Register-v1.0.0.apk
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v2
         with:
-          name: revenuiva-register-apk
-          path: android/app/build/outputs/apk/release/*.apk
-          retention-days: 30
+          tag_name: v1.0.0-android
+          name: RevenuivaAI Register v1.0.0 (Android)
+          body: |
+            RevenuivaAI Register - Payment Terminal Companion App
+
+            NFC Tap to Pay via Stripe Terminal SDK
+            Requires Android 8.0+ (API 26)
+          files: RevenuivaAI-Register-v1.0.0.apk
+          make_latest: true
