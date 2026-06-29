@@ -28,9 +28,10 @@ export default function TerminalScreen({ navigation }) {
 
   const {
     discoverReaders,
-    connectLocalMobileReader,
+    connectReader,
     collectPaymentMethod,
     confirmPaymentIntent,
+    retrievePaymentIntent,
     initialize: initTerminal,
   } = useStripeTerminal({
     onDidChangeConnectionStatus: (status) => {
@@ -142,9 +143,9 @@ export default function TerminalScreen({ navigation }) {
 
   const connectTerminalReader = async () => {
     try {
-      console.log('[Terminal] Discovering localMobile readers...');
+      console.log('[Terminal] Discovering tapToPay readers...');
       const { readers, error: discoverError } = await discoverReaders({
-        discoveryMethod: 'localMobile',
+        discoveryMethod: 'tapToPay',
         simulated: false,
       });
       if (discoverError) {
@@ -155,9 +156,12 @@ export default function TerminalScreen({ navigation }) {
       console.log('[Terminal] Found readers:', readers?.length || 0);
       if (readers && readers.length > 0) {
         console.log('[Terminal] Connecting to reader:', readers[0].serialNumber);
-        const { reader, error: connectError } = await connectLocalMobileReader({
+        const { reader, error: connectError } = await connectReader({
+          discoveryMethod: 'tapToPay',
           reader: readers[0],
           locationId: 'tml_Gj59ACoEe3BBd0',
+          tosAcceptancePermitted: true,
+          autoReconnectOnUnexpectedDisconnect: true,
         });
         if (connectError) {
           console.warn('[Terminal] Connect error:', connectError.message);
@@ -189,8 +193,17 @@ export default function TerminalScreen({ navigation }) {
           return;
         }
       }
-      console.log('[Terminal] Collecting payment, client_secret:', data.client_secret?.substring(0, 20) + '...');
-      const { paymentIntent, error } = await collectPaymentMethod({ paymentIntent: data.client_secret });
+      console.log('[Terminal] Retrieving PaymentIntent from client_secret...');
+      const { paymentIntent: pi, error: retrieveError } = await retrievePaymentIntent(data.client_secret);
+      if (retrieveError) {
+        console.warn('[Terminal] Retrieve error:', retrieveError.message);
+        setErrorMsg('Failed to load payment: ' + retrieveError.message);
+        setPhase('error');
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+        return;
+      }
+      console.log('[Terminal] Collecting payment method...');
+      const { paymentIntent, error } = await collectPaymentMethod({ paymentIntent: pi });
       if (error) {
         console.warn('[Terminal] Collect error:', error.message, error.code);
         setErrorMsg(error.message || 'Card collection failed.');
@@ -199,7 +212,7 @@ export default function TerminalScreen({ navigation }) {
         return;
       }
       console.log('[Terminal] Card collected, confirming...');
-      const { paymentIntent: confirmed, error: confirmError } = await confirmPaymentIntent({ paymentIntent: paymentIntent.id });
+      const { paymentIntent: confirmed, error: confirmError } = await confirmPaymentIntent({ paymentIntent });
       if (confirmError) {
         console.warn('[Terminal] Confirm error:', confirmError.message);
         setErrorMsg(confirmError.message || 'Payment confirmation failed.');
