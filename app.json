@@ -1,24 +1,43 @@
 {
   "expo": {
-    "name": "revenuiva-register",
+    "name": "RevenuivaAI Register",
     "slug": "revenuiva-register",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
+    "splash": {
+      "backgroundColor": "#2563eb",
+      "resizeMode": "contain"
+    },
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "bundleIdentifier": "com.revenuivaai.register",
+      "infoPlist": {
+        "NSNFCReaderUsageDescription": "This app uses NFC to accept contactless payments via Tap to Pay on iPhone.",
+        "com.apple.developer.proximity-reader.payment.acceptance": true
+      }
     },
     "android": {
+      "package": "com.revenuivaai.register",
       "adaptiveIcon": {
-        "backgroundColor": "#E6F4FE",
+        "backgroundColor": "#2563eb",
         "foregroundImage": "./assets/android-icon-foreground.png",
         "backgroundImage": "./assets/android-icon-background.png",
         "monochromeImage": "./assets/android-icon-monochrome.png"
-      }
+      },
+      "permissions": ["android.permission.NFC"]
     },
     "web": {
       "favicon": "./assets/favicon.png"
-    }
+    },
+    "plugins": [
+      [
+        "@stripe/stripe-terminal-react-native",
+        {
+          "tapToPayEnabled": true
+        }
+      ]
+    ]
   }
 }

@@ -1,0 +1,30 @@
+export const COLORS = {
+  primary: '#2563eb',
+  primaryDark: '#1d4ed8',
+  success: '#10b981',
+  successBg: '#ecfdf5',
+  danger: '#ef4444',
+  dangerBg: '#fef2f2',
+  warning: '#f59e0b',
+  warningBg: '#fffbeb',
+  bg: '#f8fafc',
+  card: '#ffffff',
+  border: '#e2e8f0',
+  borderLight: '#f1f5f9',
+  text: '#0f172a',
+  textSecondary: '#475569',
+  textMuted: '#94a3b8',
+  white: '#ffffff',
+  black: '#000000',
+  nfcBlue: '#3b82f6',
+  nfcBg: '#eff6ff',
+};
+
+export const FONTS = {
+  regular: { fontSize: 14, color: COLORS.text },
+  bold: { fontSize: 14, fontWeight: '700', color: COLORS.text },
+  heading: { fontSize: 20, fontWeight: '800', color: COLORS.text },
+  subheading: { fontSize: 16, fontWeight: '600', color: COLORS.text },
+  caption: { fontSize: 12, color: COLORS.textMuted },
+  money: { fontSize: 28, fontWeight: '800', color: COLORS.text, fontVariant: ['tabular-nums'] },
+};

@@ -1,20 +1,69 @@
+import React, { useState, useEffect, useCallback } from 'react';
 import { StatusBar } from 'expo-status-bar';
-import { StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, View } from 'react-native';
+import { NavigationContainer } from '@react-navigation/native';
+import { createNativeStackNavigator } from '@react-navigation/native-stack';
+import { StripeTerminalProvider } from '@stripe/stripe-terminal-react-native';
+import { isAuthenticated } from './src/services/auth';
+import { getConnectionToken } from './src/services/pos';
+import LoginScreen from './src/screens/LoginScreen';
+import SetupScreen from './src/screens/SetupScreen';
+import TerminalScreen from './src/screens/TerminalScreen';
 
-export default function App() {
+const Stack = createNativeStackNavigator();
+
+function AppContent() {
+  const [initialRoute, setInitialRoute] = useState(null);
+
+  useEffect(() => {
+    checkAuth();
+  }, []);
+
+  const checkAuth = async () => {
+    const authed = await isAuthenticated();
+    setInitialRoute(authed ? 'Setup' : 'Login');
+  };
+
+  if (!initialRoute) {
+    return (
+      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#f8fafc' }}>
+        <ActivityIndicator size="large" color="#2563eb" />
+      </View>
+    );
+  }
+
   return (
-    <View style={styles.container}>
-      <Text>Open up App.js to start working on your app!</Text>
-      <StatusBar style="auto" />
-    </View>
+    <NavigationContainer>
+      <StatusBar style="dark" />
+      <Stack.Navigator
+        initialRouteName={initialRoute}
+        screenOptions={{ headerShown: false, animation: 'fade' }}
+      >
+        <Stack.Screen name="Login" component={LoginScreen} />
+        <Stack.Screen name="Setup" component={SetupScreen} />
+        <Stack.Screen name="Terminal" component={TerminalScreen} />
+      </Stack.Navigator>
+    </NavigationContainer>
   );
 }
 
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#fff',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-});
+export default function App() {
+  const fetchToken = useCallback(async () => {
+    try {
+      const secret = await getConnectionToken();
+      return secret;
+    } catch (e) {
+      console.warn('Connection token fetch failed:', e.message);
+      throw e;
+    }
+  }, []);
+
+  return (
+    <StripeTerminalProvider
+      logLevel="verbose"
+      tokenProvider={fetchToken}
+    >
+      <AppContent />
+    </StripeTerminalProvider>
+  );
+}
