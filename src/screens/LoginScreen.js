@@ -11,6 +11,7 @@ export default function LoginScreen({ navigation }) {
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
 
   const handleLogin = async () => {
     if (!email.trim() || !password.trim()) {
@@ -61,14 +62,23 @@ export default function LoginScreen({ navigation }) {
           />
 
           <Text style={s.label}>Password</Text>
-          <TextInput
-            style={s.input}
-            value={password}
-            onChangeText={setPassword}
-            placeholder="Enter password"
-            placeholderTextColor={COLORS.textMuted}
-            secureTextEntry
-          />
+          <View style={s.passwordWrap}>
+            <TextInput
+              style={s.passwordInput}
+              value={password}
+              onChangeText={setPassword}
+              placeholder="Enter password"
+              placeholderTextColor={COLORS.textMuted}
+              secureTextEntry={!showPassword}
+            />
+            <TouchableOpacity
+              style={s.eyeBtn}
+              onPress={() => setShowPassword(!showPassword)}
+              activeOpacity={0.6}
+            >
+              <Text style={s.eyeIcon}>{showPassword ? '🙈' : '👁'}</Text>
+            </TouchableOpacity>
+          </View>
 
           <TouchableOpacity style={s.btn} onPress={handleLogin} disabled={loading} activeOpacity={0.8}>
             {loading ? (
@@ -107,6 +117,19 @@ const s = StyleSheet.create({
     borderRadius: 12, paddingHorizontal: 16, paddingVertical: 14,
     fontSize: 15, color: COLORS.text,
   },
+  passwordWrap: {
+    flexDirection: 'row', alignItems: 'center',
+    backgroundColor: COLORS.card, borderWidth: 1, borderColor: COLORS.border,
+    borderRadius: 12, overflow: 'hidden',
+  },
+  passwordInput: {
+    flex: 1, paddingHorizontal: 16, paddingVertical: 14,
+    fontSize: 15, color: COLORS.text,
+  },
+  eyeBtn: {
+    paddingHorizontal: 14, paddingVertical: 14, justifyContent: 'center', alignItems: 'center',
+  },
+  eyeIcon: { fontSize: 18 },
   btn: {
     backgroundColor: COLORS.primary, borderRadius: 12, paddingVertical: 16,
     alignItems: 'center', marginTop: 20,
