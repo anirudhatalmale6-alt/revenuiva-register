@@ -167,7 +167,7 @@ export default function TerminalScreen({ navigation }) {
       const { reader, error } = await easyConnect({
         discoveryMethod: 'tapToPay',
         simulated: false,
-        locationId: 'tml_Gj59ACoEe3BBd0',
+        locationId: 'tml_GjckgyoJFmc1L9',
         tosAcceptancePermitted: true,
         autoReconnectOnUnexpectedDisconnect: true,
         merchantDisplayName: 'Salud Holistic Spa',

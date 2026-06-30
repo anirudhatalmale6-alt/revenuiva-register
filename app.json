@@ -40,7 +40,8 @@
       [
         "@stripe/stripe-terminal-react-native",
         {
-          "tapToPayEnabled": true
+          "tapToPayEnabled": true,
+          "androidLocationPermission": "fine"
         }
       ],
       [
