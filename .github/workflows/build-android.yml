@@ -41,20 +41,16 @@ jobs:
 
       - name: Rename APK
         run: |
-          mv android/app/build/outputs/apk/release/app-release.apk RevenuivaAI-Register-v1.1.1.apk
+          mv android/app/build/outputs/apk/release/app-release.apk RevenuivaAI-Register-v1.1.2.apk
 
       - name: Create Release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: v1.1.1-android
-          name: RevenuivaAI Register v1.1.1 (Android) - Error Screen Fix
+          tag_name: v1.1.2-android
+          name: RevenuivaAI Register v1.1.2 (Android)
           body: |
-            RevenuivaAI Register v1.1.1 - Error Message Persistence
+            RevenuivaAI Register v1.1.2
 
-            Fixes:
-            - Error screen now stays visible until manually dismissed
-            - Added phaseRef to prevent stale closure state overrides
-            - 30-second error lock prevents any background state changes
-            - Polling completely blocked during error/tapping/success phases
-          files: RevenuivaAI-Register-v1.1.1.apk
+            - Show/hide password toggle on login screen
+          files: RevenuivaAI-Register-v1.1.2.apk
           make_latest: true
