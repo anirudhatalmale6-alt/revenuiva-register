@@ -28,8 +28,7 @@ export default function TerminalScreen({ navigation }) {
   const successScale = useRef(new Animated.Value(0)).current;
 
   const {
-    discoverReaders,
-    connectReader,
+    easyConnect,
     collectPaymentMethod,
     confirmPaymentIntent,
     retrievePaymentIntent,
@@ -164,41 +163,29 @@ export default function TerminalScreen({ navigation }) {
 
   const connectTerminalReader = async () => {
     try {
-      console.log('[Terminal] Discovering tapToPay readers...');
-      const { readers, error: discoverError } = await discoverReaders({
+      console.log('[Terminal] Using easyConnect for tapToPay...');
+      const { reader, error } = await easyConnect({
         discoveryMethod: 'tapToPay',
         simulated: false,
+        locationId: 'tml_Gj59ACoEe3BBd0',
+        tosAcceptancePermitted: true,
+        autoReconnectOnUnexpectedDisconnect: true,
+        merchantDisplayName: 'Salud Holistic Spa',
       });
-      if (discoverError) {
-        console.warn('[Terminal] Discovery error:', discoverError.message);
-        setErrorMsg('Reader discovery failed: ' + discoverError.message);
+      if (error) {
+        console.warn('[Terminal] easyConnect error:', error.message, error.code);
+        setErrorMsg('Terminal setup failed: ' + error.message);
         return false;
       }
-      console.log('[Terminal] Found readers:', readers?.length || 0);
-      if (readers && readers.length > 0) {
-        console.log('[Terminal] Connecting to reader:', readers[0].serialNumber);
-        const { reader, error: connectError } = await connectReader({
-          discoveryMethod: 'tapToPay',
-          reader: readers[0],
-          locationId: 'tml_Gj59ACoEe3BBd0',
-          tosAcceptancePermitted: true,
-          autoReconnectOnUnexpectedDisconnect: true,
-        });
-        if (connectError) {
-          console.warn('[Terminal] Connect error:', connectError.message);
-          setErrorMsg('Reader connect failed: ' + connectError.message);
-          return false;
-        }
-        if (reader) {
-          console.log('[Terminal] Connected successfully');
-          setTerminalReady(true);
-          return true;
-        }
+      if (reader) {
+        console.log('[Terminal] Connected successfully:', reader.serialNumber);
+        setTerminalReady(true);
+        return true;
       }
-      setErrorMsg('No NFC reader found. Ensure Google Play Services is active and device has a lock screen enabled.');
+      setErrorMsg('No compatible NFC reader found on this device.');
       return false;
     } catch (e) {
-      console.warn('[Terminal] Reader connect exception:', e.message);
+      console.warn('[Terminal] easyConnect exception:', e.message);
       setErrorMsg('Terminal error: ' + e.message);
       return false;
     }
