@@ -7,9 +7,11 @@ import {
 import * as SecureStore from 'expo-secure-store';
 import * as Haptics from 'expo-haptics';
 import { useStripeTerminal } from '@stripe/stripe-terminal-react-native';
+import { authorize as sqAuthorize, startPayment as sqStartPayment, getAuthorizationState as sqGetAuthState } from 'mobile-payments-sdk-react-native';
 import { COLORS, FONTS } from '../config/theme';
 import { heartbeat, collectOrder, confirmPayment, markCash } from '../services/pos';
 import { logout } from '../services/auth';
+import { getProviderInfo } from '../services/paymentProvider';
 
 const POLL_INTERVAL = 3000;
 const SUCCESS_DISPLAY_MS = 5000;
@@ -25,6 +27,7 @@ export default function TerminalScreen({ navigation }) {
   const [statusMsg, setStatusMsg] = useState('');
   const [paymentData, setPaymentData] = useState(null);
   const [terminalReady, setTerminalReady] = useState(false);
+  const [provider, setProvider] = useState('stripe');
 
   const pollRef = useRef(null);
   const statusPollRef = useRef(null);
@@ -154,12 +157,50 @@ export default function TerminalScreen({ navigation }) {
     setDeviceName(name || 'Device');
     try {
       await requestPermissions();
-      await initTerminal();
-      await connectTerminalReader();
+      const info = await getProviderInfo();
+      setProvider(info.provider);
+
+      if (info.provider === 'square') {
+        await initSquareTerminal(info);
+      } else {
+        await initTerminal();
+        await connectTerminalReader();
+      }
     } catch (e) {
       console.warn('Terminal init skipped:', e.message);
     }
     startPolling();
+  };
+
+  const initSquareTerminal = async (info) => {
+    try {
+      const authState = await sqGetAuthState();
+      if (authState === 'AUTHORIZED') {
+        setTerminalReady(true);
+        return;
+      }
+      const token = info.publishableKey;
+      const config = await getSquareConfig();
+      if (token && config.locationId) {
+        await sqAuthorize(token, config.locationId);
+        setTerminalReady(true);
+      }
+    } catch (e) {
+      console.warn('Square init failed:', e.message);
+    }
+  };
+
+  const getSquareConfig = async () => {
+    try {
+      const token = await SecureStore.getItemAsync('auth_token');
+      const { default: api } = await import('../config/api');
+      const { data } = await api.get('/gateway-info', {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      return { locationId: data.location_id || '' };
+    } catch (e) {
+      return { locationId: '' };
+    }
   };
 
   const startPolling = () => {
@@ -258,13 +299,49 @@ export default function TerminalScreen({ navigation }) {
     setStatusMsg('Preparing payment...');
 
     try {
-      const data = await collectOrder(activeOrder.id);
-      setPaymentData(data);
-      setStatusMsg('Connecting to terminal...');
-      await initiateTerminalCollection(data);
+      if (provider === 'square') {
+        await collectWithSquare();
+      } else {
+        const data = await collectOrder(activeOrder.id);
+        setPaymentData(data);
+        setStatusMsg('Connecting to terminal...');
+        await initiateTerminalCollection(data);
+      }
     } catch (e) {
       const msg = e.response?.data?.error || 'Failed to initialize payment. Please try again.';
       showError(msg);
+    }
+  };
+
+  const collectWithSquare = async () => {
+    try {
+      setStatusMsg('Starting Square payment...');
+      const amountCents = Math.round(Number(activeOrder.total_amount) * 100);
+      const idempotencyKey = `pos-${activeOrder.id}-${Date.now()}`;
+
+      const payment = await sqStartPayment(
+        {
+          amountMoney: { amount: amountCents, currencyCode: 'USD' },
+          idempotencyKey,
+          referenceId: `POS-${activeOrder.id}`,
+          note: `Order #${activeOrder.id}`,
+        },
+        { mode: 'DEFAULT' }
+      );
+
+      setStatusMsg('Finalizing...');
+      await confirmPayment(activeOrder.id, payment.id, 'tap_to_pay');
+
+      isProcessing.current = false;
+      setStatusMsg('');
+      updatePhase('success');
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    } catch (e) {
+      if (e.message?.includes('cancel') || e.code === 'CANCELED') {
+        showError('Payment was cancelled.');
+      } else {
+        showError(e.message || 'Square payment failed. Please try again.');
+      }
     }
   };
 
