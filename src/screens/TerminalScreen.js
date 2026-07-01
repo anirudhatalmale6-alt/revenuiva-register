@@ -6,18 +6,9 @@ import {
 } from 'react-native';
 import * as SecureStore from 'expo-secure-store';
 import * as Haptics from 'expo-haptics';
-import { useStripeTerminal } from '@stripe/stripe-terminal-react-native';
-let sqAuthorize, sqStartPayment, sqGetAuthState;
-try {
-  const sqModule = require('mobile-payments-sdk-react-native');
-  sqAuthorize = sqModule.authorize;
-  sqStartPayment = sqModule.startPayment;
-  sqGetAuthState = sqModule.getAuthorizationState;
-} catch (e) {
-  // Square SDK not initialized - will use Stripe only
-}
+import { authorize, startPayment, getAuthorizationState } from 'mobile-payments-sdk-react-native';
 import { COLORS, FONTS } from '../config/theme';
-import { heartbeat, collectOrder, confirmPayment, markCash } from '../services/pos';
+import { heartbeat, confirmPayment, markCash } from '../services/pos';
 import { logout } from '../services/auth';
 import { getProviderInfo } from '../services/paymentProvider';
 
@@ -33,12 +24,9 @@ export default function TerminalScreen({ navigation }) {
   const [phase, setPhase] = useState('idle');
   const [errorMsg, setErrorMsg] = useState('');
   const [statusMsg, setStatusMsg] = useState('');
-  const [paymentData, setPaymentData] = useState(null);
   const [terminalReady, setTerminalReady] = useState(false);
-  const [provider, setProvider] = useState('stripe');
 
   const pollRef = useRef(null);
-  const statusPollRef = useRef(null);
   const appState = useRef(AppState.currentState);
   const isProcessing = useRef(false);
   const phaseRef = useRef('idle');
@@ -57,24 +45,11 @@ export default function TerminalScreen({ navigation }) {
     setPhase(newPhase);
   }, []);
 
-  const {
-    easyConnect,
-    collectPaymentMethod,
-    confirmPaymentIntent,
-    retrievePaymentIntent,
-    initialize: initTerminal,
-  } = useStripeTerminal({
-    onDidChangeConnectionStatus: (status) => {
-      setTerminalReady(status === 'connected');
-    },
-  });
-
   useEffect(() => {
     init();
     const sub = AppState.addEventListener('change', handleAppState);
     return () => {
       stopPolling();
-      stopStatusPolling();
       sub.remove();
     };
   }, []);
@@ -166,14 +141,7 @@ export default function TerminalScreen({ navigation }) {
     try {
       await requestPermissions();
       const info = await getProviderInfo();
-      setProvider(info.provider);
-
-      if (info.provider === 'square') {
-        await initSquareTerminal(info);
-      } else {
-        await initTerminal();
-        await connectTerminalReader();
-      }
+      await initSquareTerminal(info);
     } catch (e) {
       console.warn('Terminal init skipped:', e.message);
     }
@@ -182,15 +150,15 @@ export default function TerminalScreen({ navigation }) {
 
   const initSquareTerminal = async (info) => {
     try {
-      const authState = await sqGetAuthState();
+      const authState = await getAuthorizationState();
       if (authState === 'AUTHORIZED') {
         setTerminalReady(true);
         return;
       }
       const token = info.publishableKey;
-      const config = await getSquareConfig();
-      if (token && config.locationId) {
-        await sqAuthorize(token, config.locationId);
+      const locationId = await getSquareLocationId();
+      if (token && locationId) {
+        await authorize(token, locationId);
         setTerminalReady(true);
       }
     } catch (e) {
@@ -198,16 +166,16 @@ export default function TerminalScreen({ navigation }) {
     }
   };
 
-  const getSquareConfig = async () => {
+  const getSquareLocationId = async () => {
     try {
       const token = await SecureStore.getItemAsync('auth_token');
       const { default: api } = await import('../config/api');
       const { data } = await api.get('/gateway-info', {
         headers: { Authorization: `Bearer ${token}` },
       });
-      return { locationId: data.location_id || '' };
+      return data.location_id || '';
     } catch (e) {
-      return { locationId: '' };
+      return '';
     }
   };
 
@@ -221,13 +189,6 @@ export default function TerminalScreen({ navigation }) {
     if (pollRef.current) {
       clearInterval(pollRef.current);
       pollRef.current = null;
-    }
-  };
-
-  const stopStatusPolling = () => {
-    if (statusPollRef.current) {
-      clearInterval(statusPollRef.current);
-      statusPollRef.current = null;
     }
   };
 
@@ -266,35 +227,9 @@ export default function TerminalScreen({ navigation }) {
     errorLockedUntil.current = 0;
     updatePhase('idle');
     setActiveOrder(null);
-    setPaymentData(null);
     setErrorMsg('');
     setStatusMsg('');
     startPolling();
-  };
-
-  const connectTerminalReader = async () => {
-    try {
-      const { reader, error } = await easyConnect({
-        discoveryMethod: 'tapToPay',
-        simulated: false,
-        locationId: 'tml_GjckgyoJFmc1L9',
-        tosAcceptancePermitted: true,
-        autoReconnectOnUnexpectedDisconnect: true,
-        merchantDisplayName: 'Salud Holistic Spa',
-      });
-      if (error) {
-        console.warn('[Terminal] easyConnect error:', error.message);
-        return false;
-      }
-      if (reader) {
-        setTerminalReady(true);
-        return true;
-      }
-      return false;
-    } catch (e) {
-      console.warn('[Terminal] easyConnect exception:', e.message);
-      return false;
-    }
   };
 
   const handleCollectPayment = async () => {
@@ -304,30 +239,13 @@ export default function TerminalScreen({ navigation }) {
     stopPolling();
     updatePhase('tapping');
     setErrorMsg('');
-    setStatusMsg('Preparing payment...');
+    setStatusMsg('Starting Square payment...');
 
     try {
-      if (provider === 'square') {
-        await collectWithSquare();
-      } else {
-        const data = await collectOrder(activeOrder.id);
-        setPaymentData(data);
-        setStatusMsg('Connecting to terminal...');
-        await initiateTerminalCollection(data);
-      }
-    } catch (e) {
-      const msg = e.response?.data?.error || 'Failed to initialize payment. Please try again.';
-      showError(msg);
-    }
-  };
-
-  const collectWithSquare = async () => {
-    try {
-      setStatusMsg('Starting Square payment...');
       const amountCents = Math.round(Number(activeOrder.total_amount) * 100);
       const idempotencyKey = `pos-${activeOrder.id}-${Date.now()}`;
 
-      const payment = await sqStartPayment(
+      const payment = await startPayment(
         {
           amountMoney: { amount: amountCents, currencyCode: 'USD' },
           idempotencyKey,
@@ -359,54 +277,6 @@ export default function TerminalScreen({ navigation }) {
     setStatusMsg('');
     updatePhase('error');
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
-  };
-
-  const initiateTerminalCollection = async (data) => {
-    try {
-      if (!terminalReady) {
-        setStatusMsg('Setting up NFC reader...');
-        const ok = await connectTerminalReader();
-        if (!ok) {
-          showError('Could not activate NFC reader. Make sure NFC is enabled in your phone settings.');
-          return;
-        }
-      }
-
-      setStatusMsg('Loading payment details...');
-      const { paymentIntent: pi, error: retrieveError } = await retrievePaymentIntent(data.client_secret);
-      if (retrieveError) {
-        showError('Failed to load payment: ' + retrieveError.message);
-        return;
-      }
-
-      setStatusMsg('Hold card near the top of this phone...');
-      const { paymentIntent, error } = await collectPaymentMethod({ paymentIntent: pi });
-      if (error) {
-        if (error.code === 'Canceled') {
-          showError('Card read was cancelled. Please try again.');
-        } else {
-          showError(error.message || 'Could not read card. Please try again.');
-        }
-        return;
-      }
-
-      setStatusMsg('Card read successfully! Processing payment...');
-      const { paymentIntent: confirmed, error: confirmError } = await confirmPaymentIntent({ paymentIntent });
-      if (confirmError) {
-        showError(confirmError.message || 'Payment was declined. Please try a different card.');
-        return;
-      }
-
-      setStatusMsg('Finalizing...');
-      await confirmPayment(activeOrder.id, confirmed.id, 'tap_to_pay');
-
-      isProcessing.current = false;
-      setStatusMsg('');
-      updatePhase('success');
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-    } catch (e) {
-      showError('Payment failed: ' + e.message);
-    }
   };
 
   const handleRetry = () => {
@@ -472,7 +342,6 @@ export default function TerminalScreen({ navigation }) {
         style: 'destructive',
         onPress: async () => {
           stopPolling();
-          stopStatusPolling();
           await SecureStore.deleteItemAsync('device_token');
           await SecureStore.deleteItemAsync('device_name');
           await logout();
@@ -488,7 +357,6 @@ export default function TerminalScreen({ navigation }) {
     return `${order.client.first_name || ''} ${order.client.last_name || ''}`.trim() || 'Customer';
   };
 
-  // ─── SUCCESS OVERLAY ─────────────────────────────────────
   if (phase === 'success') {
     return (
       <SafeAreaView style={[s.safe, s.successSafe]}>
@@ -508,12 +376,10 @@ export default function TerminalScreen({ navigation }) {
     );
   }
 
-  // ─── MAIN TERMINAL VIEW ──────────────────────────────────
   const hasOrder = !!activeOrder && phase !== 'idle';
 
   return (
     <SafeAreaView style={s.safe}>
-      {/* ── Top Bar ── */}
       <View style={s.topBar}>
         <View>
           <Text style={s.deviceLabel}>{deviceName}</Text>
@@ -541,7 +407,6 @@ export default function TerminalScreen({ navigation }) {
         )}
       </View>
 
-      {/* ── IDLE STATE ── */}
       {!hasOrder && (
         <View style={s.idleWrap}>
           <View style={s.idleCenter}>
@@ -576,14 +441,12 @@ export default function TerminalScreen({ navigation }) {
         </View>
       )}
 
-      {/* ── ACTIVE ORDER ── */}
       {hasOrder && (
         <ScrollView
           contentContainerStyle={s.orderContent}
           bounces={false}
           showsVerticalScrollIndicator={false}
         >
-          {/* Order Summary */}
           <View style={s.orderCard}>
             <View style={s.orderHeader}>
               <View>
@@ -612,7 +475,6 @@ export default function TerminalScreen({ navigation }) {
             </View>
           </View>
 
-          {/* ── NFC TAP AREA ── */}
           {phase === 'tapping' && (
             <View style={s.nfcCard}>
               <Animated.View style={[
@@ -638,7 +500,6 @@ export default function TerminalScreen({ navigation }) {
             </View>
           )}
 
-          {/* ── ERROR DISPLAY ── */}
           {phase === 'error' && (
             <View style={s.errorCard}>
               <View style={s.errorIconWrap}>
@@ -657,7 +518,6 @@ export default function TerminalScreen({ navigation }) {
             </View>
           )}
 
-          {/* ── COLLECTING PHASE BUTTONS ── */}
           {phase === 'collecting' && (
             <View style={s.actions}>
               <TouchableOpacity
@@ -678,7 +538,6 @@ export default function TerminalScreen({ navigation }) {
             </View>
           )}
 
-          {/* ── TAPPING PHASE - FALLBACK OPTION ── */}
           {phase === 'tapping' && (
             <View style={s.actions}>
               <TouchableOpacity style={s.switchCashBtn} onPress={handleCashPayment} activeOpacity={0.7}>
@@ -695,8 +554,6 @@ export default function TerminalScreen({ navigation }) {
 const s = StyleSheet.create({
   safe: { flex: 1, backgroundColor: COLORS.bg },
   successSafe: { backgroundColor: '#ecfdf5' },
-
-  // ── Top Bar ──
   topBar: {
     flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
     paddingHorizontal: 20, paddingVertical: 14,
@@ -719,16 +576,12 @@ const s = StyleSheet.create({
     backgroundColor: COLORS.borderLight, justifyContent: 'center', alignItems: 'center',
   },
   dismissText: { fontSize: 18, color: COLORS.textSecondary },
-
-  // ── Idle ──
   idleWrap: { flex: 1 },
   idleCenter: { flex: 1, justifyContent: 'center', alignItems: 'center', paddingHorizontal: 40 },
   idleIconWrap: { marginBottom: 20 },
   idleIcon: { fontSize: 56 },
   idleTitle: { ...FONTS.heading, fontSize: 22, marginBottom: 8 },
   idleDesc: { ...FONTS.regular, color: COLORS.textSecondary, textAlign: 'center', lineHeight: 22 },
-
-  // ── Queue ──
   queueBox: { paddingHorizontal: 20, paddingBottom: 24 },
   queueHeader: {
     fontSize: 11, fontWeight: '700', color: COLORS.textMuted,
@@ -743,8 +596,6 @@ const s = StyleSheet.create({
   queueName: { ...FONTS.bold, fontSize: 15 },
   queueId: { ...FONTS.caption, marginTop: 2 },
   queueAmount: { ...FONTS.bold, fontSize: 18, color: COLORS.primary },
-
-  // ── Order Card ──
   orderContent: { padding: 20, paddingBottom: 40 },
   orderCard: {
     backgroundColor: COLORS.white, borderRadius: 16, padding: 20,
@@ -767,8 +618,6 @@ const s = StyleSheet.create({
   },
   totalLabel: { ...FONTS.bold, fontSize: 16 },
   totalAmount: { ...FONTS.money },
-
-  // ── NFC Card ──
   nfcCard: {
     backgroundColor: '#f0f7ff', borderRadius: 20, padding: 32,
     alignItems: 'center', marginBottom: 16,
@@ -801,8 +650,6 @@ const s = StyleSheet.create({
   statusBarText: {
     color: '#1e40af', fontWeight: '600', fontSize: 13, marginLeft: 10, flex: 1,
   },
-
-  // ── Error ──
   errorCard: {
     backgroundColor: '#fff5f5', borderRadius: 16, padding: 28,
     alignItems: 'center', marginBottom: 16,
@@ -829,8 +676,6 @@ const s = StyleSheet.create({
     borderWidth: 1, borderColor: '#fecaca',
   },
   errorDismissText: { ...FONTS.bold, color: COLORS.danger, fontSize: 14 },
-
-  // ── Actions ──
   actions: { gap: 12, marginTop: 4 },
   collectBtn: {
     backgroundColor: COLORS.success, borderRadius: 16, paddingVertical: 24,
@@ -851,8 +696,6 @@ const s = StyleSheet.create({
     borderWidth: 1, borderColor: COLORS.border, backgroundColor: COLORS.white,
   },
   switchCashText: { fontSize: 14, fontWeight: '600', color: COLORS.textSecondary },
-
-  // ── Success ──
   successCenter: { flex: 1, justifyContent: 'center', alignItems: 'center', paddingHorizontal: 40 },
   successCircle: {
     width: 110, height: 110, borderRadius: 55, backgroundColor: COLORS.success,

@@ -1,28 +1,24 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect } from 'react';
 import { StatusBar } from 'expo-status-bar';
 import { ActivityIndicator, View } from 'react-native';
 import { NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
-import { StripeTerminalProvider } from '@stripe/stripe-terminal-react-native';
 import { isAuthenticated } from './src/services/auth';
-import { getConnectionToken } from './src/services/pos';
 import LoginScreen from './src/screens/LoginScreen';
 import SetupScreen from './src/screens/SetupScreen';
 import TerminalScreen from './src/screens/TerminalScreen';
 
 const Stack = createNativeStackNavigator();
 
-function AppContent() {
+export default function App() {
   const [initialRoute, setInitialRoute] = useState(null);
 
   useEffect(() => {
-    checkAuth();
+    (async () => {
+      const authed = await isAuthenticated();
+      setInitialRoute(authed ? 'Setup' : 'Login');
+    })();
   }, []);
-
-  const checkAuth = async () => {
-    const authed = await isAuthenticated();
-    setInitialRoute(authed ? 'Setup' : 'Login');
-  };
 
   if (!initialRoute) {
     return (
@@ -44,26 +40,5 @@ function AppContent() {
         <Stack.Screen name="Terminal" component={TerminalScreen} />
       </Stack.Navigator>
     </NavigationContainer>
-  );
-}
-
-export default function App() {
-  const fetchToken = useCallback(async () => {
-    try {
-      const secret = await getConnectionToken();
-      return secret;
-    } catch (e) {
-      console.warn('Connection token fetch failed:', e.message);
-      throw e;
-    }
-  }, []);
-
-  return (
-    <StripeTerminalProvider
-      logLevel="verbose"
-      tokenProvider={fetchToken}
-    >
-      <AppContent />
-    </StripeTerminalProvider>
   );
 }

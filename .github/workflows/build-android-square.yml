@@ -1,0 +1,65 @@
+name: Build Android APK (Square)
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [square]
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Setup JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Expo prebuild
+        run: npx expo prebuild --platform android --clean
+
+      - name: Build APK
+        working-directory: android
+        env:
+          GRADLE_OPTS: -Xmx6g -XX:+UseParallelGC
+        run: |
+          echo "org.gradle.jvmargs=-Xmx6g -XX:MaxMetaspaceSize=1g -XX:+UseParallelGC -XX:+HeapDumpOnOutOfMemoryError" >> gradle.properties
+          echo "org.gradle.daemon=false" >> gradle.properties
+          echo "org.gradle.workers.max=2" >> gradle.properties
+          ./gradlew assembleRelease --no-daemon
+
+      - name: Rename APK
+        run: |
+          mv android/app/build/outputs/apk/release/app-release.apk RevenuivaAI-Square-v2.0.3.apk
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v2.0.3-square
+          name: RevenuivaAI v2.0.3 Square (Android)
+          body: |
+            RevenuivaAI v2.0.3 - Square Edition
+
+            - Square Mobile Payments SDK for NFC Tap to Pay
+            - RevenuivaAI site-icon logo
+            - Same UI and features as Stripe edition
+            - For clients using Square as payment provider
+          files: RevenuivaAI-Square-v2.0.3.apk
+          make_latest: false

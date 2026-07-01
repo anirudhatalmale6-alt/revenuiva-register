@@ -38,13 +38,6 @@
     },
     "plugins": [
       [
-        "@stripe/stripe-terminal-react-native",
-        {
-          "tapToPayEnabled": true,
-          "androidLocationPermission": "fine"
-        }
-      ],
-      [
         "expo-build-properties",
         {
           "android": {
@@ -56,6 +49,7 @@
           }
         }
       ],
+      "./plugins/withSquareMaven"
     ]
   }
 }
