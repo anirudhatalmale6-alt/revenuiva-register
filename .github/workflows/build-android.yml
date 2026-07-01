@@ -41,19 +41,21 @@ jobs:
 
       - name: Rename APK
         run: |
-          mv android/app/build/outputs/apk/release/app-release.apk RevenuivaAI-Register-v1.2.0.apk
+          mv android/app/build/outputs/apk/release/app-release.apk RevenuivaAI-Register-v2.0.0.apk
 
       - name: Create Release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: v1.2.0-android
-          name: RevenuivaAI Register v1.2.0 (Android)
+          tag_name: v2.0.0-android
+          name: RevenuivaAI Register v2.0.0 (Android) - Multi-Provider
           body: |
-            RevenuivaAI Register v1.2.0
+            RevenuivaAI Register v2.0.0 - Multi-Provider Payment Support
 
-            - RevenuivaAI logo on login screen (replaces blue circle)
+            - Square Mobile Payments SDK integration (NFC Tap to Pay)
+            - Auto-detects active payment provider from dashboard settings
+            - Stripe and Square both fully supported for NFC
+            - RevenuivaAI logo on login screen
             - Show/hide password toggle
-            - NFC error screen stays visible until dismissed
-            - Smooth NFC tap-to-pay flow
-          files: RevenuivaAI-Register-v1.2.0.apk
+            - Persistent error screens
+          files: RevenuivaAI-Register-v2.0.0.apk
           make_latest: true
