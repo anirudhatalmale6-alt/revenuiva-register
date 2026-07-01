@@ -7,15 +7,7 @@ import {
 import * as SecureStore from 'expo-secure-store';
 import * as Haptics from 'expo-haptics';
 import { useStripeTerminal } from '@stripe/stripe-terminal-react-native';
-let sqAuthorize, sqStartPayment, sqGetAuthState;
-try {
-  const sq = require('mobile-payments-sdk-react-native');
-  sqAuthorize = sq.authorize;
-  sqStartPayment = sq.startPayment;
-  sqGetAuthState = sq.getAuthorizationState;
-} catch (e) {
-  // Square SDK not available in this build
-}
+import { authorize as sqAuthorize, startPayment as sqStartPayment, getAuthorizationState as sqGetAuthState } from 'mobile-payments-sdk-react-native';
 import { COLORS, FONTS } from '../config/theme';
 import { heartbeat, collectOrder, confirmPayment, markCash } from '../services/pos';
 import { logout } from '../services/auth';
@@ -181,10 +173,6 @@ export default function TerminalScreen({ navigation }) {
   };
 
   const initSquareTerminal = async (info) => {
-    if (!sqAuthorize || !sqStartPayment) {
-      console.warn('Square SDK not available in this build');
-      return;
-    }
     try {
       const authState = await sqGetAuthState();
       if (authState === 'AUTHORIZED') {
@@ -326,10 +314,6 @@ export default function TerminalScreen({ navigation }) {
   };
 
   const collectWithSquare = async () => {
-    if (!sqStartPayment) {
-      showError('Square NFC is not available in this build. Please contact support.');
-      return;
-    }
     try {
       setStatusMsg('Starting Square payment...');
       const amountCents = Math.round(Number(activeOrder.total_amount) * 100);

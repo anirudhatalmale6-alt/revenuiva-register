@@ -13,6 +13,7 @@
     "expo-haptics": "^56.0.3",
     "expo-secure-store": "^56.0.4",
     "expo-status-bar": "~56.0.4",
+    "mobile-payments-sdk-react-native": "^2026.4.1",
     "react": "19.2.3",
     "react-native": "0.85.3",
     "react-native-safe-area-context": "^5.8.0",
@@ -27,6 +28,7 @@
   "private": true,
   "devDependencies": {
     "@react-native-community/cli": "^20.2.0",
-    "@react-native-community/cli-platform-android": "^20.2.0"
+    "@react-native-community/cli-platform-android": "^20.2.0",
+    "patch-package": "^8.0.1"
   }
 }
