@@ -38,11 +38,12 @@ jobs:
       - name: Build APK
         working-directory: android
         env:
-          GRADLE_OPTS: -Xmx4g -XX:+UseParallelGC
+          GRADLE_OPTS: -Xmx6g -XX:+UseParallelGC
         run: |
-          echo "org.gradle.jvmargs=-Xmx4g -XX:+UseParallelGC" >> gradle.properties
+          echo "org.gradle.jvmargs=-Xmx6g -XX:MaxMetaspaceSize=1g -XX:+UseParallelGC -XX:+HeapDumpOnOutOfMemoryError" >> gradle.properties
           echo "org.gradle.daemon=false" >> gradle.properties
-          ./gradlew assembleRelease
+          echo "org.gradle.workers.max=2" >> gradle.properties
+          ./gradlew assembleRelease --no-daemon
 
       - name: Rename APK
         run: |

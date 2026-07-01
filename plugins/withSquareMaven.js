@@ -42,6 +42,14 @@ function withSquareMaven(config) {
       );
     }
 
+    // Add dexOptions for large dual-SDK builds and enable multidex
+    if (!appGradle.includes('javaMaxHeapSize')) {
+      appGradle = appGradle.replace(
+        /android\s*\{/,
+        (match) => `${match}\n    dexOptions {\n        javaMaxHeapSize "4g"\n        preDexLibraries = false\n    }\n    defaultConfig {\n        multiDexEnabled true\n    }`
+      );
+    }
+
     config.modResults.contents = appGradle;
     return config;
   });
