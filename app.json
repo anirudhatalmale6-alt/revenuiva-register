@@ -51,7 +51,7 @@
             "ndkVersion": "27.0.12077973",
             "compileSdkVersion": 36,
             "targetSdkVersion": 36,
-            "minSdkVersion": 26,
+            "minSdkVersion": 28,
             "kotlinVersion": "2.2.21"
           }
         }
