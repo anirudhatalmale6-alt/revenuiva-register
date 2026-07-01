@@ -37,7 +37,12 @@ jobs:
 
       - name: Build APK
         working-directory: android
-        run: ./gradlew assembleRelease
+        env:
+          GRADLE_OPTS: -Xmx4g -XX:+UseParallelGC
+        run: |
+          echo "org.gradle.jvmargs=-Xmx4g -XX:+UseParallelGC" >> gradle.properties
+          echo "org.gradle.daemon=false" >> gradle.properties
+          ./gradlew assembleRelease
 
       - name: Rename APK
         run: |
