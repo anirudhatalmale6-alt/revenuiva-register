@@ -1,8 +1,8 @@
 {
   "expo": {
-    "name": "RevenuivaAI Register",
+    "name": "RevenuivaAI",
     "slug": "revenuiva-register",
-    "version": "2.0.1",
+    "version": "2.0.2",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
