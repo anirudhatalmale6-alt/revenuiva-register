@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import {
-  View, Text, TextInput, TouchableOpacity, StyleSheet,
+  View, Text, TextInput, TouchableOpacity, StyleSheet, Image,
   KeyboardAvoidingView, Platform, ActivityIndicator, SafeAreaView,
 } from 'react-native';
 import { COLORS, FONTS } from '../config/theme';
@@ -35,9 +35,11 @@ export default function LoginScreen({ navigation }) {
     <SafeAreaView style={s.safe}>
       <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={s.container}>
         <View style={s.logoBox}>
-          <View style={s.iconCircle}>
-            <Text style={s.iconText}>R</Text>
-          </View>
+          <Image
+            source={require('../../assets/logo.png')}
+            style={s.logoImage}
+            resizeMode="contain"
+          />
           <Text style={s.title}>RevenuivaAI</Text>
           <Text style={s.subtitle}>Register Terminal</Text>
         </View>
@@ -101,13 +103,9 @@ const s = StyleSheet.create({
   safe: { flex: 1, backgroundColor: COLORS.bg },
   container: { flex: 1, justifyContent: 'center', paddingHorizontal: 28 },
   logoBox: { alignItems: 'center', marginBottom: 40 },
-  iconCircle: {
-    width: 72, height: 72, borderRadius: 20, backgroundColor: COLORS.primary,
-    justifyContent: 'center', alignItems: 'center', marginBottom: 16,
-    shadowColor: COLORS.primary, shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.3, shadowRadius: 16, elevation: 8,
+  logoImage: {
+    width: 80, height: 80, borderRadius: 18, marginBottom: 16,
   },
-  iconText: { fontSize: 32, fontWeight: '800', color: COLORS.white },
   title: { ...FONTS.heading, fontSize: 26 },
   subtitle: { ...FONTS.caption, fontSize: 14, marginTop: 4 },
   form: { gap: 4 },
