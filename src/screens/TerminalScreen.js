@@ -7,7 +7,15 @@ import {
 import * as SecureStore from 'expo-secure-store';
 import * as Haptics from 'expo-haptics';
 import { useStripeTerminal } from '@stripe/stripe-terminal-react-native';
-import { authorize as sqAuthorize, startPayment as sqStartPayment, getAuthorizationState as sqGetAuthState } from 'mobile-payments-sdk-react-native';
+let sqAuthorize, sqStartPayment, sqGetAuthState;
+try {
+  const sqModule = require('mobile-payments-sdk-react-native');
+  sqAuthorize = sqModule.authorize;
+  sqStartPayment = sqModule.startPayment;
+  sqGetAuthState = sqModule.getAuthorizationState;
+} catch (e) {
+  // Square SDK not initialized - will use Stripe only
+}
 import { COLORS, FONTS } from '../config/theme';
 import { heartbeat, collectOrder, confirmPayment, markCash } from '../services/pos';
 import { logout } from '../services/auth';

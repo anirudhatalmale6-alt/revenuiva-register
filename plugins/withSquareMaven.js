@@ -1,4 +1,4 @@
-const { withProjectBuildGradle, withAppBuildGradle } = require('expo/config-plugins');
+const { withProjectBuildGradle, withAppBuildGradle, withMainApplication } = require('expo/config-plugins');
 
 function withSquareMaven(config) {
   config = withProjectBuildGradle(config, (config) => {
@@ -51,6 +51,28 @@ function withSquareMaven(config) {
     }
 
     config.modResults.contents = appGradle;
+    return config;
+  });
+
+  // Inject Square SDK initialization into MainApplication.kt
+  config = withMainApplication(config, (config) => {
+    let mainApp = config.modResults.contents;
+
+    if (!mainApp.includes('MobilePaymentsSdk')) {
+      // Add import
+      mainApp = mainApp.replace(
+        /import android\.app\.Application/,
+        `import android.app.Application\nimport com.squareup.sdk.mobilepayments.MobilePaymentsSdk`
+      );
+
+      // Add initialization in onCreate
+      mainApp = mainApp.replace(
+        /super\.onCreate\(\)/,
+        `super.onCreate()\n    MobilePaymentsSdk.initialize(getString(R.string.square_application_id), this)`
+      );
+    }
+
+    config.modResults.contents = mainApp;
     return config;
   });
 
