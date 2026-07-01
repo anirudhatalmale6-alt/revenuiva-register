@@ -1,4 +1,6 @@
-const { withProjectBuildGradle, withAppBuildGradle, withMainApplication } = require('expo/config-plugins');
+const { withProjectBuildGradle, withAppBuildGradle, withMainApplication, withStringsXml } = require('expo/config-plugins');
+
+const SQUARE_APP_ID = process.env.SQUARE_APPLICATION_ID || 'sandbox-sq0idb-Y0gLjxyl21M1KHbqtgxr7w';
 
 function withSquareMaven(config) {
   config = withProjectBuildGradle(config, (config) => {
@@ -31,10 +33,10 @@ function withSquareMaven(config) {
     return config;
   });
 
-  // Disable minification for Square SDK compatibility
   config = withAppBuildGradle(config, (config) => {
     let appGradle = config.modResults.contents;
 
+    // Disable minification for Square SDK compatibility
     if (!appGradle.includes('// Square SDK: disable minification')) {
       appGradle = appGradle.replace(
         /buildTypes\s*\{[\s\S]*?release\s*\{/,
@@ -50,7 +52,28 @@ function withSquareMaven(config) {
       );
     }
 
+    // Add Square SDK as direct app dependency so MainApplication can import it
+    if (!appGradle.includes('mobile-payments-sdk')) {
+      appGradle = appGradle.replace(
+        /dependencies\s*\{/,
+        (match) => `${match}\n    implementation "com.squareup.sdk:mobile-payments-sdk:2.5.0"`
+      );
+    }
+
     config.modResults.contents = appGradle;
+    return config;
+  });
+
+  // Add Square application ID as Android string resource
+  config = withStringsXml(config, (config) => {
+    const strings = config.modResults.resources.string || [];
+    if (!strings.find(s => s.$.name === 'square_application_id')) {
+      strings.push({
+        $: { name: 'square_application_id' },
+        _: SQUARE_APP_ID,
+      });
+      config.modResults.resources.string = strings;
+    }
     return config;
   });
 
@@ -59,13 +82,11 @@ function withSquareMaven(config) {
     let mainApp = config.modResults.contents;
 
     if (!mainApp.includes('MobilePaymentsSdk')) {
-      // Add import
       mainApp = mainApp.replace(
         /import android\.app\.Application/,
         `import android.app.Application\nimport com.squareup.sdk.mobilepayments.MobilePaymentsSdk`
       );
 
-      // Add initialization in onCreate
       mainApp = mainApp.replace(
         /super\.onCreate\(\)/,
         `super.onCreate()\n    MobilePaymentsSdk.initialize(getString(R.string.square_application_id), this)`
