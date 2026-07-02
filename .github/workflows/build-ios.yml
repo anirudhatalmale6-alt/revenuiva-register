@@ -1,0 +1,89 @@
+name: Build iOS & Upload to TestFlight
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Expo prebuild
+        run: npx expo prebuild --platform ios --clean
+
+      - name: Setup API Key for signing
+        env:
+          ASC_API_KEY: ${{ secrets.ASC_API_KEY_P8 }}
+        run: |
+          mkdir -p ~/private_keys
+          echo "$ASC_API_KEY" > ~/private_keys/AuthKey_UPZZZQT35C.p8
+
+      - name: Install CocoaPods
+        working-directory: ios
+        run: pod install
+
+      - name: Build & Archive
+        working-directory: ios
+        run: |
+          xcodebuild archive \
+            -workspace RevenuivaAI.xcworkspace \
+            -scheme RevenuivaAI \
+            -configuration Release \
+            -archivePath $RUNNER_TEMP/RevenuivaAI.xcarchive \
+            -destination 'generic/platform=iOS' \
+            -allowProvisioningUpdates \
+            -authenticationKeyPath ~/private_keys/AuthKey_UPZZZQT35C.p8 \
+            -authenticationKeyID UPZZZQT35C \
+            -authenticationKeyIssuerID a617b860-c739-45d9-b2c2-bb7a2a6f02a3 \
+            CODE_SIGN_STYLE=Automatic \
+            DEVELOPMENT_TEAM=DBJC3A73UV \
+            | xcpretty
+
+      - name: Export IPA
+        run: |
+          cat > $RUNNER_TEMP/ExportOptions.plist << 'PLIST'
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0">
+          <dict>
+            <key>method</key>
+            <string>app-store-connect</string>
+            <key>teamID</key>
+            <string>DBJC3A73UV</string>
+            <key>destination</key>
+            <string>upload</string>
+            <key>signingStyle</key>
+            <string>automatic</string>
+          </dict>
+          </plist>
+          PLIST
+
+          xcodebuild -exportArchive \
+            -archivePath $RUNNER_TEMP/RevenuivaAI.xcarchive \
+            -exportOptionsPlist $RUNNER_TEMP/ExportOptions.plist \
+            -exportPath $RUNNER_TEMP/export \
+            -allowProvisioningUpdates \
+            -authenticationKeyPath ~/private_keys/AuthKey_UPZZZQT35C.p8 \
+            -authenticationKeyID UPZZZQT35C \
+            -authenticationKeyIssuerID a617b860-c739-45d9-b2c2-bb7a2a6f02a3
+
+      - name: Upload to TestFlight
+        run: |
+          xcrun altool --upload-app \
+            --type ios \
+            --file "$RUNNER_TEMP/export/RevenuivaAI.ipa" \
+            --apiKey UPZZZQT35C \
+            --apiIssuer a617b860-c739-45d9-b2c2-bb7a2a6f02a3

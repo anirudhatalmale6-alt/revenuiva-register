@@ -16,7 +16,8 @@
       "infoPlist": {
         "NSNFCReaderUsageDescription": "This app uses NFC to accept contactless payments via Tap to Pay on iPhone.",
         "NSLocationWhenInUseUsageDescription": "Location access is needed for payment processing.",
-        "NSBluetoothAlwaysUsageDescription": "Bluetooth is used to connect to card readers."
+        "NSBluetoothAlwaysUsageDescription": "Bluetooth is used to connect to card readers.",
+        "ITSAppUsesNonExemptEncryption": false
       }
     },
     "android": {
@@ -56,10 +57,16 @@
             "kotlinVersion": "2.2.21"
           },
           "ios": {
-            "deploymentTarget": "15.0"
+            "deploymentTarget": "16.4"
           }
         }
       ]
-    ]
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "6e8aeb39-3c52-4061-89e6-305036f0b71b"
+      }
+    },
+    "owner": "mediaxtreme"
   }
 }

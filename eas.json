@@ -28,7 +28,6 @@
     "production": {
       "ios": {
         "appleId": "josechery@mediaxtreme.com",
-        "ascAppId": "",
         "appleTeamId": "DBJC3A73UV",
         "ascApiKeyPath": "./keys/AuthKey_UPZZZQT35C.p8",
         "ascApiKeyIssuerId": "a617b860-c739-45d9-b2c2-bb7a2a6f02a3",
