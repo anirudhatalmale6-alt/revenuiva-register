@@ -88,6 +88,36 @@ jobs:
             puts "  -> Response: #{del_resp.code}"
           end
           puts "All distribution certs revoked. Fastlane will create a fresh one."
+
+          # Create App ID if it does not exist
+          bid_uri = URI("https://api.appstoreconnect.apple.com/v1/bundleIds?filter[identifier]=com.revenuivaai.register")
+          bid_req = Net::HTTP::Get.new(bid_uri)
+          bid_req["Authorization"] = "Bearer #{token}"
+          bid_resp = http.request(bid_req)
+          bid_data = JSON.parse(bid_resp.body)
+
+          if bid_data["data"].empty?
+            puts "Creating App ID com.revenuivaai.register..."
+            create_uri = URI("https://api.appstoreconnect.apple.com/v1/bundleIds")
+            create_req = Net::HTTP::Post.new(create_uri)
+            create_req["Authorization"] = "Bearer #{token}"
+            create_req["Content-Type"] = "application/json"
+            create_req.body = JSON.generate({
+              data: {
+                type: "bundleIds",
+                attributes: {
+                  identifier: "com.revenuivaai.register",
+                  name: "RevenuivaAI Register",
+                  platform: "IOS"
+                }
+              }
+            })
+            create_resp = http.request(create_req)
+            puts "App ID creation response: #{create_resp.code}"
+            puts create_resp.body if create_resp.code.to_i >= 400
+          else
+            puts "App ID com.revenuivaai.register already exists"
+          end
           '
 
       - name: Build and Upload via Fastlane
@@ -121,15 +151,6 @@ jobs:
                 platform: "ios",
                 keychain_path: File.expand_path("~/Library/Keychains/#{keychain_name}-db"),
                 keychain_password: keychain_password
-              )
-
-              # Create App ID on Apple Developer Portal if it doesn't exist
-              produce(
-                api_key: api_key,
-                app_identifier: "com.revenuivaai.register",
-                app_name: "RevenuivaAI",
-                team_id: "DBJC3A73UV",
-                skip_itc: true
               )
 
               get_provisioning_profile(
