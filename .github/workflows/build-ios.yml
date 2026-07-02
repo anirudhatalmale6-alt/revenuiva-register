@@ -77,17 +77,17 @@ jobs:
           puts "Found #{certs.length} iOS distribution certificate(s)"
           certs.each { |c| puts "  - #{c["id"]}: #{c["attributes"]["name"]} (#{c["attributes"]["certificateType"]})" }
 
-          if certs.length >= 2
-            oldest = certs.first
-            puts "Revoking certificate: #{oldest["id"]} (#{oldest["attributes"]["name"]})"
-            del_uri = URI("https://api.appstoreconnect.apple.com/v1/certificates/#{oldest["id"]}")
+          # Revoke ALL distribution certs - we have no private keys for any of them
+          # Fastlane will create a fresh one with a key we control
+          certs.each do |c|
+            puts "Revoking certificate: #{c["id"]} (#{c["attributes"]["name"]})"
+            del_uri = URI("https://api.appstoreconnect.apple.com/v1/certificates/#{c["id"]}")
             del_req = Net::HTTP::Delete.new(del_uri)
             del_req["Authorization"] = "Bearer #{token}"
             del_resp = http.request(del_req)
-            puts "Revoke response: #{del_resp.code}"
-          else
-            puts "No need to revoke, under the limit"
+            puts "  -> Response: #{del_resp.code}"
           end
+          puts "All distribution certs revoked. Fastlane will create a fresh one."
           '
 
       - name: Build and Upload via Fastlane
