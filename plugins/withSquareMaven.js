@@ -84,12 +84,12 @@ function withSquareMaven(config) {
     if (!mainApp.includes('MobilePaymentsSdk')) {
       mainApp = mainApp.replace(
         /import android\.app\.Application/,
-        `import android.app.Application\nimport com.squareup.sdk.mobilepayments.MobilePaymentsSdk`
+        `import android.app.Application\nimport android.util.Log\nimport com.squareup.sdk.mobilepayments.MobilePaymentsSdk`
       );
 
       mainApp = mainApp.replace(
         /super\.onCreate\(\)/,
-        `super.onCreate()\n    MobilePaymentsSdk.initialize(getString(R.string.square_application_id), this)`
+        `super.onCreate()\n    try {\n      MobilePaymentsSdk.initialize(getString(R.string.square_application_id), this)\n    } catch (e: Exception) {\n      Log.e("RevenuivaAI", "Square SDK init deferred: " + e.message)\n    }`
       );
     }
 

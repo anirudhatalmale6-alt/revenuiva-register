@@ -48,19 +48,20 @@ jobs:
 
       - name: Rename APK
         run: |
-          mv android/app/build/outputs/apk/release/app-release.apk RevenuivaAI-Square-v2.0.3.apk
+          mv android/app/build/outputs/apk/release/app-release.apk RevenuivaAI-Square-v2.0.4.apk
 
       - name: Create Release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: v2.0.3-square
-          name: RevenuivaAI v2.0.3 Square (Android)
+          tag_name: v2.0.4-square
+          name: RevenuivaAI v2.0.4 Square (Android)
           body: |
-            RevenuivaAI v2.0.3 - Square Edition
+            RevenuivaAI v2.0.4 - Square Edition
 
+            - Fixed crash on launch: Square SDK initialization wrapped in safe try-catch
             - Square Mobile Payments SDK for NFC Tap to Pay
             - RevenuivaAI site-icon logo
             - Same UI and features as Stripe edition
             - For clients using Square as payment provider
-          files: RevenuivaAI-Square-v2.0.3.apk
+          files: RevenuivaAI-Square-v2.0.4.apk
           make_latest: false
