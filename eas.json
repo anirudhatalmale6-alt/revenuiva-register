@@ -22,6 +22,17 @@
       "ios": {
         "buildConfiguration": "Release"
       }
+    },
+    "beta": {
+      "autoIncrement": true,
+      "distribution": "store",
+      "channel": "beta",
+      "env": {
+        "APP_VARIANT": "beta"
+      },
+      "ios": {
+        "buildConfiguration": "Release"
+      }
     }
   },
   "submit": {
@@ -34,6 +45,15 @@
         "ascApiKeyId": "UPZZZQT35C"
       },
       "android": {}
+    },
+    "beta": {
+      "ios": {
+        "appleId": "josechery@mediaxtreme.com",
+        "appleTeamId": "DBJC3A73UV",
+        "ascApiKeyPath": "./keys/AuthKey_UPZZZQT35C.p8",
+        "ascApiKeyIssuerId": "a617b860-c739-45d9-b2c2-bb7a2a6f02a3",
+        "ascApiKeyId": "UPZZZQT35C"
+      }
     }
   }
 }
