@@ -1,9 +1,10 @@
 import axios from 'axios';
 import * as SecureStore from 'expo-secure-store';
 
-// Fallback base if the device hasn't been activated yet. Once a device is
-// paired via a Device Sync PIN, the practice-specific base is used instead.
-const FALLBACK_POS_BASE = 'https://app.revenuivaai.com/api/pos';
+// Devices are provisioned via the master (app.revenuivaai.com/pos/activate),
+// but all practice POS operations (login, orders, payments) run on the client
+// platform. This is the operational base used for everything after pairing.
+const OPERATIONAL_BASE = 'https://client.revenuivaai.com/api';
 
 const api = axios.create({
   timeout: 15000,
@@ -11,9 +12,13 @@ const api = axios.create({
 });
 
 api.interceptors.request.use(async (config) => {
-  // Resolve the per-practice API base dynamically from activation.
-  const apiBase = await SecureStore.getItemAsync('api_base');
-  config.baseURL = apiBase ? `${apiBase.replace(/\/$/, '')}/pos` : FALLBACK_POS_BASE;
+  // Resolve the per-practice API base from activation, but never send POS
+  // operations to the provisioning host — practices live on the client platform.
+  let apiBase = await SecureStore.getItemAsync('api_base');
+  if (!apiBase || apiBase.includes('app.revenuivaai.com')) {
+    apiBase = OPERATIONAL_BASE;
+  }
+  config.baseURL = `${apiBase.replace(/\/$/, '')}/pos`;
 
   const token = await SecureStore.getItemAsync('auth_token');
   if (token) config.headers.Authorization = `Bearer ${token}`;
