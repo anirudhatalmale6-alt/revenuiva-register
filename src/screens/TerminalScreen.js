@@ -20,6 +20,7 @@ import { COLORS, FONTS } from '../config/theme';
 import { heartbeat, collectOrder, confirmPayment, markCash } from '../services/pos';
 import { logout } from '../services/auth';
 import { getProviderInfo } from '../services/paymentProvider';
+import { readerConfig, isOsSupported, osUnsupportedMessage } from '../services/tapToPay';
 
 const POLL_INTERVAL = 3000;
 const SUCCESS_DISPLAY_MS = 5000;
@@ -274,16 +275,26 @@ export default function TerminalScreen({ navigation }) {
 
   const connectTerminalReader = async () => {
     try {
+      // Guard for iOS versions that can't run Tap to Pay (checklist 1.4).
+      if (!isOsSupported()) {
+        showError(osUnsupportedMessage());
+        return false;
+      }
+      const cfg = await readerConfig();
       const { reader, error } = await easyConnect({
         discoveryMethod: 'tapToPay',
         simulated: false,
-        locationId: 'tml_GjckgyoJFmc1L9',
+        locationId: cfg.locationId,
         tosAcceptancePermitted: true,
         autoReconnectOnUnexpectedDisconnect: true,
-        merchantDisplayName: 'Salud Holistic Spa',
+        merchantDisplayName: cfg.merchantDisplayName,
       });
       if (error) {
         console.warn('[Terminal] easyConnect error:', error.message);
+        if (String(error.code || '').toLowerCase().includes('osversion') ||
+            String(error.message || '').toLowerCase().includes('os version')) {
+          showError(osUnsupportedMessage());
+        }
         return false;
       }
       if (reader) {
@@ -302,9 +313,9 @@ export default function TerminalScreen({ navigation }) {
 
     isProcessing.current = true;
     stopPolling();
-    updatePhase('tapping');
+    updatePhase('initializing');
     setErrorMsg('');
-    setStatusMsg('Preparing payment...');
+    setStatusMsg('Preparing Tap to Pay...');
 
     try {
       if (provider === 'square') {
@@ -312,7 +323,7 @@ export default function TerminalScreen({ navigation }) {
       } else {
         const data = await collectOrder(activeOrder.id);
         setPaymentData(data);
-        setStatusMsg('Connecting to terminal...');
+        setStatusMsg('Connecting to reader...');
         await initiateTerminalCollection(data);
       }
     } catch (e) {
@@ -363,11 +374,14 @@ export default function TerminalScreen({ navigation }) {
 
   const initiateTerminalCollection = async (data) => {
     try {
+      // ── Initializing (checklist 5.7): reader warms up / configures ──
       if (!terminalReady) {
-        setStatusMsg('Setting up NFC reader...');
+        setStatusMsg('Setting up the reader...');
         const ok = await connectTerminalReader();
         if (!ok) {
-          showError('Could not activate NFC reader. Make sure NFC is enabled in your phone settings.');
+          if (phaseRef.current !== 'error') {
+            showError('Could not activate Tap to Pay. Make sure you are connected to the internet and try again.');
+          }
           return;
         }
       }
@@ -379,6 +393,8 @@ export default function TerminalScreen({ navigation }) {
         return;
       }
 
+      // ── Tapping (checklist 5.6): prompt to hold card ──
+      updatePhase('tapping');
       setStatusMsg('Hold card near the top of this phone...');
       const { paymentIntent, error } = await collectPaymentMethod({ paymentIntent: pi });
       if (error) {
@@ -390,7 +406,9 @@ export default function TerminalScreen({ navigation }) {
         return;
       }
 
-      setStatusMsg('Card read successfully! Processing payment...');
+      // ── Processing (checklist 5.8): transaction underway ──
+      updatePhase('processing');
+      setStatusMsg('Processing payment...');
       const { paymentIntent: confirmed, error: confirmError } = await confirmPaymentIntent({ paymentIntent });
       if (confirmError) {
         showError(confirmError.message || 'Payment was declined. Please try a different card.');
@@ -535,9 +553,18 @@ export default function TerminalScreen({ navigation }) {
             <Text style={s.dismissText}>✕</Text>
           </TouchableOpacity>
         ) : (
-          <TouchableOpacity onPress={handleLogout} style={s.logoutBtn} activeOpacity={0.7}>
-            <Text style={s.logoutText}>Sign Out</Text>
-          </TouchableOpacity>
+          <View style={s.topActions}>
+            <TouchableOpacity
+              onPress={() => navigation.navigate('EnableTapToPay', { mode: 'help' })}
+              style={s.helpBtn}
+              activeOpacity={0.7}
+            >
+              <Text style={s.helpText}>?</Text>
+            </TouchableOpacity>
+            <TouchableOpacity onPress={handleLogout} style={s.logoutBtn} activeOpacity={0.7}>
+              <Text style={s.logoutText}>Sign Out</Text>
+            </TouchableOpacity>
+          </View>
         )}
       </View>
 
@@ -592,7 +619,10 @@ export default function TerminalScreen({ navigation }) {
               </View>
               <View style={s.orderBadge}>
                 <Text style={s.orderBadgeText}>
-                  {phase === 'tapping' ? 'PROCESSING' : phase === 'error' ? 'FAILED' : 'PENDING'}
+                  {phase === 'initializing' ? 'STARTING'
+                    : phase === 'tapping' ? 'TAP CARD'
+                    : phase === 'processing' ? 'PROCESSING'
+                    : phase === 'error' ? 'FAILED' : 'PENDING'}
                 </Text>
               </View>
             </View>
@@ -611,6 +641,18 @@ export default function TerminalScreen({ navigation }) {
               <Text style={s.totalAmount}>{formatMoney(activeOrder?.total_amount)}</Text>
             </View>
           </View>
+
+          {/* ── INITIALIZING (checklist 5.7) ── */}
+          {phase === 'initializing' && (
+            <View style={s.stateCard}>
+              <ActivityIndicator size="large" color={COLORS.nfcBlue} />
+              <Text style={s.stateTitle}>Getting Tap to Pay ready</Text>
+              <Text style={s.stateDesc}>
+                Preparing this iPhone to read the card. This will just take a moment.
+              </Text>
+              <Text style={s.stateStatus}>{statusMsg || 'Setting up the reader...'}</Text>
+            </View>
+          )}
 
           {/* ── NFC TAP AREA ── */}
           {phase === 'tapping' && (
@@ -635,6 +677,19 @@ export default function TerminalScreen({ navigation }) {
                 <ActivityIndicator size="small" color={COLORS.nfcBlue} />
                 <Text style={s.statusBarText}>{statusMsg || 'Waiting for card...'}</Text>
               </View>
+            </View>
+          )}
+
+          {/* ── PROCESSING (checklist 5.8) ── */}
+          {phase === 'processing' && (
+            <View style={s.stateCard}>
+              <ActivityIndicator size="large" color={COLORS.success} />
+              <Text style={s.stateTitle}>Processing payment</Text>
+              <Text style={s.stateDesc}>
+                Card read successfully. Completing the transaction — please don't
+                close the app.
+              </Text>
+              <Text style={s.stateStatus}>{statusMsg || 'Processing payment...'}</Text>
             </View>
           )}
 
@@ -712,6 +767,13 @@ const s = StyleSheet.create({
     fontSize: 10, fontWeight: '700', color: COLORS.nfcBlue, letterSpacing: 0.5,
     backgroundColor: COLORS.nfcBg, paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4,
   },
+  topActions: { flexDirection: 'row', alignItems: 'center' },
+  helpBtn: {
+    width: 30, height: 30, borderRadius: 15, marginRight: 8,
+    borderWidth: 1, borderColor: COLORS.border,
+    alignItems: 'center', justifyContent: 'center',
+  },
+  helpText: { ...FONTS.bold, fontSize: 15, color: COLORS.textSecondary },
   logoutBtn: { paddingHorizontal: 14, paddingVertical: 8 },
   logoutText: { color: COLORS.danger, fontWeight: '600', fontSize: 13 },
   dismissBtn: {
@@ -767,6 +829,19 @@ const s = StyleSheet.create({
   },
   totalLabel: { ...FONTS.bold, fontSize: 16 },
   totalAmount: { ...FONTS.money },
+
+  // ── Initializing / Processing state cards ──
+  stateCard: {
+    backgroundColor: COLORS.white, borderRadius: 20, padding: 32,
+    alignItems: 'center', marginBottom: 16,
+    borderWidth: 1, borderColor: COLORS.border,
+  },
+  stateTitle: { ...FONTS.heading, fontSize: 19, marginTop: 20, marginBottom: 8, textAlign: 'center' },
+  stateDesc: { ...FONTS.regular, color: COLORS.textSecondary, textAlign: 'center', lineHeight: 22, paddingHorizontal: 8 },
+  stateStatus: {
+    ...FONTS.caption, marginTop: 18, color: COLORS.textSecondary,
+    backgroundColor: COLORS.borderLight, paddingHorizontal: 14, paddingVertical: 8, borderRadius: 10, overflow: 'hidden',
+  },
 
   // ── NFC Card ──
   nfcCard: {

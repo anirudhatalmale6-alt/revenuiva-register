@@ -7,6 +7,7 @@ export async function login(email, password) {
     await SecureStore.setItemAsync('auth_token', data.token);
     await SecureStore.setItemAsync('user_name', data.user?.name || '');
     await SecureStore.setItemAsync('user_email', email);
+    await SecureStore.setItemAsync('user_role', String(data.user?.role || ''));
   }
   return data;
 }
@@ -18,6 +19,7 @@ export async function logout() {
   await SecureStore.deleteItemAsync('auth_token');
   await SecureStore.deleteItemAsync('user_name');
   await SecureStore.deleteItemAsync('user_email');
+  await SecureStore.deleteItemAsync('user_role');
 }
 
 export async function getToken() {

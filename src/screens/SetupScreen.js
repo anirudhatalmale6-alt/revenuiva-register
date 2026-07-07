@@ -7,6 +7,7 @@ import * as SecureStore from 'expo-secure-store';
 import * as Device from 'expo-device';
 import { COLORS, FONTS } from '../config/theme';
 import { registerDevice } from '../services/pos';
+import { isEnabled } from '../services/tapToPay';
 
 export default function SetupScreen({ navigation }) {
   const [deviceName, setDeviceName] = useState('');
@@ -18,11 +19,17 @@ export default function SetupScreen({ navigation }) {
     checkExisting();
   }, []);
 
+  // After the device is registered, send merchants through the one-time
+  // Tap to Pay enable flow (Apple review requirement) before the terminal.
+  const forward = async () => {
+    navigation.replace((await isEnabled()) ? 'Terminal' : 'EnableTapToPay');
+  };
+
   const checkExisting = async () => {
     const token = await SecureStore.getItemAsync('device_token');
     const name = await SecureStore.getItemAsync('device_name');
     if (token && name) {
-      navigation.replace('Terminal');
+      await forward();
       return;
     }
     const defaultName = Device.modelName
@@ -56,7 +63,7 @@ export default function SetupScreen({ navigation }) {
       await registerDevice(deviceName.trim(), token, null, hardwareInfo);
       await SecureStore.setItemAsync('device_token', token);
       await SecureStore.setItemAsync('device_name', deviceName.trim());
-      navigation.replace('Terminal');
+      await forward();
     } catch (e) {
       const msg = e.response?.data?.message || e.response?.data?.error || JSON.stringify(e.response?.data?.errors || {});
       setError(msg || 'Registration failed. Try again.');

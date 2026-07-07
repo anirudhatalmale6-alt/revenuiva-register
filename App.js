@@ -11,6 +11,7 @@ import { getConnectionToken } from './src/services/pos';
 import ActivationScreen from './src/screens/ActivationScreen';
 import LoginScreen from './src/screens/LoginScreen';
 import SetupScreen from './src/screens/SetupScreen';
+import EnableTapToPayScreen from './src/screens/EnableTapToPayScreen';
 import TerminalScreen from './src/screens/TerminalScreen';
 
 const Stack = createNativeStackNavigator();
@@ -53,6 +54,7 @@ function AppContent() {
         <Stack.Screen name="Activation" component={ActivationScreen} />
         <Stack.Screen name="Login" component={LoginScreen} />
         <Stack.Screen name="Setup" component={SetupScreen} />
+        <Stack.Screen name="EnableTapToPay" component={EnableTapToPayScreen} />
         <Stack.Screen name="Terminal" component={TerminalScreen} />
       </Stack.Navigator>
     </NavigationContainer>
