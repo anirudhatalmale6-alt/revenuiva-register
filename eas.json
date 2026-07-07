@@ -17,6 +17,14 @@
         "simulator": false
       }
     },
+    "ttptest": {
+      "distribution": "internal",
+      "credentialsSource": "local",
+      "ios": {
+        "buildConfiguration": "Release",
+        "simulator": false
+      }
+    },
     "production": {
       "autoIncrement": true,
       "ios": {

@@ -5,3 +5,6 @@ dist/
 *.aab
 *.ipa
 .env
+
+credentials/
+credentials.json
