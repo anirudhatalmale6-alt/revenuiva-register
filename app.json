@@ -13,6 +13,9 @@
     "ios": {
       "supportsTablet": false,
       "bundleIdentifier": "com.revenuivaai.register",
+      "entitlements": {
+        "com.apple.developer.proximity-reader.payment.acceptance": true
+      },
       "infoPlist": {
         "NSNFCReaderUsageDescription": "This app uses NFC to accept contactless payments via Tap to Pay on iPhone.",
         "NSLocationWhenInUseUsageDescription": "Location access is needed for payment processing.",
