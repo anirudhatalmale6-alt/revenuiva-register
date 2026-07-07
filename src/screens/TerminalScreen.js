@@ -518,7 +518,7 @@ export default function TerminalScreen({ navigation }) {
           {activeOrder && (
             <Text style={s.successAmount}>{formatMoney(activeOrder.total_amount)}</Text>
           )}
-          <Text style={s.successDesc}>Receipt sent to customer via SMS</Text>
+          <Text style={s.successDesc}>Receipt sent to the customer via SMS and email</Text>
           <View style={s.successDivider} />
           <Text style={s.successHint}>Returning to terminal...</Text>
         </Animated.View>
