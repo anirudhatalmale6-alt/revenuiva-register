@@ -3,35 +3,24 @@ import * as SecureStore from 'expo-secure-store';
 import { PHASES } from './PaymentTerminal';
 
 /**
- * Square adapter for the PaymentTerminal contract. Wraps Square's Mobile
- * Payments SDK (Tap to Pay on iPhone via Square).
+ * Square adapter for the PaymentTerminal contract.
  *
- * IMPORTANT — native gating: the Square native module is only present when the
- * build is compiled with it (see the Expo config-plugin flag). Requiring it
- * defensively means a Stripe-only build never drags Square's native code in,
- * which is exactly what avoids the two-SDK build collisions. `available` tells
- * the app whether this processor can actually run in the current binary.
+ * IMPORTANT — LAZY NATIVE LOAD: the Square native SDK is required only when a
+ * Square payment is actually initiated (init()/collect()), never at module load
+ * or app startup. This keeps app launch and every Stripe-only practice fully
+ * clear of Square's native code — a Stripe device never touches the Square SDK
+ * at all, and startup can never be affected by it.
  */
-let sqAuthorize, sqStartPayment, sqGetAuthState, sqGetEnvironment, sqShowMockReaderUI;
-let SqEnums = {};
-try {
-  const m = require('mobile-payments-sdk-react-native');
-  sqAuthorize = m.authorize;
-  sqStartPayment = m.startPayment;
-  sqGetAuthState = m.getAuthorizationState;
-  sqGetEnvironment = m.getEnvironment;
-  sqShowMockReaderUI = m.showMockReaderUI;
-  // Enums the SDK expects (numeric/string). Passing raw strings for these was
-  // the cause of the earlier "undefined is not a function" — startPayment
-  // requires processingMode + additionalMethods + a numeric PromptMode.
-  SqEnums = {
-    PromptMode: m.PromptMode,
-    ProcessingMode: m.ProcessingMode,
-    CurrencyCode: m.CurrencyCode,
-    AdditionalPaymentMethodType: m.AdditionalPaymentMethodType,
-  };
-} catch (e) {
-  // Square SDK not compiled into this build — Stripe-only. `available` = false.
+let _sq = undefined; // undefined = not loaded yet, null = unavailable in build, object = SDK
+function loadSquare() {
+  if (_sq === undefined) {
+    try {
+      _sq = require('mobile-payments-sdk-react-native');
+    } catch (e) {
+      _sq = null; // Square SDK not compiled into this build.
+    }
+  }
+  return _sq;
 }
 
 async function fetchSquareLocation() {
@@ -48,7 +37,6 @@ async function fetchSquareLocation() {
 }
 
 export function useSquareTerminalAdapter() {
-  const available = !!sqStartPayment;
   const [ready, setReady] = useState(false);
   const readyRef = useRef(false);
   const setReadyBoth = (v) => {
@@ -56,87 +44,84 @@ export function useSquareTerminalAdapter() {
     setReady(v);
   };
 
-  const init = useCallback(
-    async (info) => {
-      if (!available) return;
-      try {
-        const authState = await sqGetAuthState();
-        if (authState === 'AUTHORIZED') {
-          setReadyBoth(true);
-          return;
-        }
-        // Square authorizes on-device with the merchant ACCESS TOKEN (not the
-        // application_id — that's the SDK identifier set in native config).
-        const token = info?.accessToken;
-        const locationId = info?.locationId || (await fetchSquareLocation());
-        if (token && locationId) {
-          await sqAuthorize(token, locationId);
-          setReadyBoth(true);
-        }
-      } catch (e) {
-        // stay not-ready; collect() will surface a clear message
+  const init = useCallback(async (info) => {
+    const sq = loadSquare();
+    if (!sq) return;
+    try {
+      const authState = await sq.getAuthorizationState();
+      if (authState === 'AUTHORIZED') {
+        setReadyBoth(true);
+        return;
       }
-    },
-    [available]
-  );
+      // Square authorizes on-device with the merchant ACCESS TOKEN (not the
+      // application_id — that's the SDK identifier set in native config).
+      const token = info?.accessToken;
+      const locationId = info?.locationId || (await fetchSquareLocation());
+      if (token && locationId) {
+        await sq.authorize(token, locationId);
+        setReadyBoth(true);
+      }
+    } catch (e) {
+      // stay not-ready; collect() will surface a clear message
+    }
+  }, []);
 
   const connect = useCallback(async () => {
     // Square authorizes during init(); there is no separate reader handshake.
     return { ok: readyRef.current };
   }, []);
 
-  const collect = useCallback(
-    async (order, { onPhase }) => {
-      if (!available) {
-        return { ok: false, message: 'Square is not available in this build.' };
-      }
-      onPhase(PHASES.INITIALIZING, 'Starting Square payment...');
+  const collect = useCallback(async (order, { onPhase }) => {
+    const sq = loadSquare();
+    if (!sq) {
+      return { ok: false, message: 'Square is not available in this build.' };
+    }
+    onPhase(PHASES.INITIALIZING, 'Starting Square payment...');
+    try {
+      // Sandbox: present the on-screen mock reader so a simulated card can
+      // complete the sale (skipped in production).
       try {
-        // Sandbox: present the on-screen mock reader so a simulated card can
-        // complete the sale (no effect / skipped in production).
-        try {
-          const env = sqGetEnvironment ? String(await sqGetEnvironment()) : '';
-          if (/sandbox/i.test(env) && sqShowMockReaderUI) {
-            await sqShowMockReaderUI();
-          }
-        } catch (_) { /* non-fatal */ }
-
-        const amountCents = Math.round(Number(order.total_amount) * 100);
-        const CurrencyCode = SqEnums.CurrencyCode || {};
-        const ProcessingMode = SqEnums.ProcessingMode || {};
-        const PromptMode = SqEnums.PromptMode || {};
-        const AddMethod = SqEnums.AdditionalPaymentMethodType || {};
-
-        onPhase(PHASES.TAPPING, 'Follow the prompt to take payment...');
-        const payment = await sqStartPayment(
-          {
-            amountMoney: { amount: amountCents, currencyCode: CurrencyCode.USD ?? 'USD' },
-            processingMode: ProcessingMode.ONLINE_ONLY ?? 0,
-            idempotencyKey: `pos-${order.id}-${Date.now()}`,
-            referenceId: `POS-${order.id}`,
-            note: `Order #${order.id}`,
-          },
-          {
-            additionalMethods: [AddMethod.ALL ?? 'ALL'],
-            mode: PromptMode.DEFAULT ?? 0,
-          }
-        );
-
-        onPhase(PHASES.PROCESSING, 'Finalizing...');
-        return { ok: true, transactionId: payment?.id, paymentMethod: 'tap_to_pay' };
-      } catch (e) {
-        const detail = e?.message || e?.code || String(e);
-        if (/cancel/i.test(detail) || e?.code === 'CANCELED') {
-          return { ok: false, message: 'Payment was cancelled.' };
+        const env = sq.getEnvironment ? String(await sq.getEnvironment()) : '';
+        if (/sandbox/i.test(env) && sq.showMockReaderUI) {
+          await sq.showMockReaderUI();
         }
-        // Surface the real Square error so any remaining issue is diagnosable.
-        return { ok: false, message: `Square: ${detail}` };
-      }
-    },
-    [available]
-  );
+      } catch (_) { /* non-fatal */ }
 
-  return { provider: 'square', ready, available, init, connect, collect };
+      const amountCents = Math.round(Number(order.total_amount) * 100);
+      const CurrencyCode = sq.CurrencyCode || {};
+      const ProcessingMode = sq.ProcessingMode || {};
+      const PromptMode = sq.PromptMode || {};
+      const AddMethod = sq.AdditionalPaymentMethodType || {};
+
+      onPhase(PHASES.TAPPING, 'Follow the prompt to take payment...');
+      const payment = await sq.startPayment(
+        {
+          amountMoney: { amount: amountCents, currencyCode: CurrencyCode.USD ?? 'USD' },
+          processingMode: ProcessingMode.ONLINE_ONLY ?? 0,
+          idempotencyKey: `pos-${order.id}-${Date.now()}`,
+          referenceId: `POS-${order.id}`,
+          note: `Order #${order.id}`,
+        },
+        {
+          additionalMethods: [AddMethod.ALL ?? 'ALL'],
+          mode: PromptMode.DEFAULT ?? 0,
+        }
+      );
+
+      onPhase(PHASES.PROCESSING, 'Finalizing...');
+      return { ok: true, transactionId: payment?.id, paymentMethod: 'tap_to_pay' };
+    } catch (e) {
+      const detail = e?.message || e?.code || String(e);
+      if (/cancel/i.test(detail) || e?.code === 'CANCELED') {
+        return { ok: false, message: 'Payment was cancelled.' };
+      }
+      // Surface the real Square error so any remaining issue is diagnosable.
+      return { ok: false, message: `Square: ${detail}` };
+    }
+  }, []);
+
+  // available is optimistic; the real (lazy) load + guard happens in collect().
+  return { provider: 'square', ready, available: true, init, connect, collect };
 }
 
 export default useSquareTerminalAdapter;
