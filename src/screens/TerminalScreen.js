@@ -6,21 +6,11 @@ import {
 } from 'react-native';
 import * as SecureStore from 'expo-secure-store';
 import * as Haptics from 'expo-haptics';
-import { useStripeTerminal } from '@stripe/stripe-terminal-react-native';
-let sqAuthorize, sqStartPayment, sqGetAuthState;
-try {
-  const sqModule = require('mobile-payments-sdk-react-native');
-  sqAuthorize = sqModule.authorize;
-  sqStartPayment = sqModule.startPayment;
-  sqGetAuthState = sqModule.getAuthorizationState;
-} catch (e) {
-  // Square SDK not initialized - will use Stripe only
-}
 import { COLORS, FONTS } from '../config/theme';
-import { heartbeat, collectOrder, confirmPayment, markCash } from '../services/pos';
+import { heartbeat, confirmPayment, markCash } from '../services/pos';
 import { logout } from '../services/auth';
 import { getProviderInfo } from '../services/paymentProvider';
-import { readerConfig, isOsSupported, osUnsupportedMessage } from '../services/tapToPay';
+import { useTerminal } from '../payments/useTerminal';
 
 const POLL_INTERVAL = 3000;
 const SUCCESS_DISPLAY_MS = 5000;
@@ -34,9 +24,8 @@ export default function TerminalScreen({ navigation }) {
   const [phase, setPhase] = useState('idle');
   const [errorMsg, setErrorMsg] = useState('');
   const [statusMsg, setStatusMsg] = useState('');
-  const [paymentData, setPaymentData] = useState(null);
-  const [terminalReady, setTerminalReady] = useState(false);
   const [provider, setProvider] = useState('stripe');
+  const [providerResolved, setProviderResolved] = useState(false);
 
   const pollRef = useRef(null);
   const statusPollRef = useRef(null);
@@ -58,17 +47,10 @@ export default function TerminalScreen({ navigation }) {
     setPhase(newPhase);
   }, []);
 
-  const {
-    easyConnect,
-    collectPaymentMethod,
-    confirmPaymentIntent,
-    retrievePaymentIntent,
-    initialize: initTerminal,
-  } = useStripeTerminal({
-    onDidChangeConnectionStatus: (status) => {
-      setTerminalReady(status === 'connected');
-    },
-  });
+  // Single processor-agnostic terminal. The active adapter (Stripe/Square/…)
+  // is resolved from the practice's gateway config; this screen never touches
+  // a processor SDK directly. See src/payments/PaymentTerminal.js.
+  const terminal = useTerminal(provider);
 
   useEffect(() => {
     init();
@@ -79,6 +61,24 @@ export default function TerminalScreen({ navigation }) {
       sub.remove();
     };
   }, []);
+
+  // Once we know which processor the practice uses, initialize/connect that
+  // adapter. Runs after provider is resolved so a Stripe-only practice never
+  // triggers the wrong SDK.
+  useEffect(() => {
+    if (!providerResolved) return;
+    (async () => {
+      try {
+        const info = await getProviderInfo(); // cached after init()
+        await terminal.init(info);
+        if (terminal.provider === 'stripe') {
+          await terminal.connect();
+        }
+      } catch (e) {
+        console.warn('Terminal init skipped:', e.message);
+      }
+    })();
+  }, [providerResolved, provider]);
 
   useEffect(() => {
     if (phase === 'tapping') {
@@ -168,48 +168,12 @@ export default function TerminalScreen({ navigation }) {
       await requestPermissions();
       const info = await getProviderInfo();
       setProvider(info.provider);
-
-      if (info.provider === 'square') {
-        await initSquareTerminal(info);
-      } else {
-        await initTerminal();
-        await connectTerminalReader();
-      }
     } catch (e) {
-      console.warn('Terminal init skipped:', e.message);
+      console.warn('Provider resolve skipped:', e.message);
     }
+    // Signal the adapter effect to run init/connect for the resolved processor.
+    setProviderResolved(true);
     startPolling();
-  };
-
-  const initSquareTerminal = async (info) => {
-    try {
-      const authState = await sqGetAuthState();
-      if (authState === 'AUTHORIZED') {
-        setTerminalReady(true);
-        return;
-      }
-      const token = info.publishableKey;
-      const config = await getSquareConfig();
-      if (token && config.locationId) {
-        await sqAuthorize(token, config.locationId);
-        setTerminalReady(true);
-      }
-    } catch (e) {
-      console.warn('Square init failed:', e.message);
-    }
-  };
-
-  const getSquareConfig = async () => {
-    try {
-      const token = await SecureStore.getItemAsync('auth_token');
-      const { default: api } = await import('../config/api');
-      const { data } = await api.get('/gateway-info', {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      return { locationId: data.location_id || '' };
-    } catch (e) {
-      return { locationId: '' };
-    }
   };
 
   const startPolling = () => {
@@ -267,45 +231,9 @@ export default function TerminalScreen({ navigation }) {
     errorLockedUntil.current = 0;
     updatePhase('idle');
     setActiveOrder(null);
-    setPaymentData(null);
     setErrorMsg('');
     setStatusMsg('');
     startPolling();
-  };
-
-  const connectTerminalReader = async () => {
-    try {
-      // Guard for iOS versions that can't run Tap to Pay (checklist 1.4).
-      if (!isOsSupported()) {
-        showError(osUnsupportedMessage());
-        return false;
-      }
-      const cfg = await readerConfig();
-      const { reader, error } = await easyConnect({
-        discoveryMethod: 'tapToPay',
-        simulated: false,
-        locationId: cfg.locationId,
-        tosAcceptancePermitted: true,
-        autoReconnectOnUnexpectedDisconnect: true,
-        merchantDisplayName: cfg.merchantDisplayName,
-      });
-      if (error) {
-        console.warn('[Terminal] easyConnect error:', error.message);
-        if (String(error.code || '').toLowerCase().includes('osversion') ||
-            String(error.message || '').toLowerCase().includes('os version')) {
-          showError(osUnsupportedMessage());
-        }
-        return false;
-      }
-      if (reader) {
-        setTerminalReady(true);
-        return true;
-      }
-      return false;
-    } catch (e) {
-      console.warn('[Terminal] easyConnect exception:', e.message);
-      return false;
-    }
   };
 
   const handleCollectPayment = async () => {
@@ -318,49 +246,34 @@ export default function TerminalScreen({ navigation }) {
     setStatusMsg('Preparing Tap to Pay...');
 
     try {
-      if (provider === 'square') {
-        await collectWithSquare();
-      } else {
-        const data = await collectOrder(activeOrder.id);
-        setPaymentData(data);
-        setStatusMsg('Connecting to reader...');
-        await initiateTerminalCollection(data);
-      }
-    } catch (e) {
-      const msg = e.response?.data?.error || 'Failed to initialize payment. Please try again.';
-      showError(msg);
-    }
-  };
-
-  const collectWithSquare = async () => {
-    try {
-      setStatusMsg('Starting Square payment...');
-      const amountCents = Math.round(Number(activeOrder.total_amount) * 100);
-      const idempotencyKey = `pos-${activeOrder.id}-${Date.now()}`;
-
-      const payment = await sqStartPayment(
-        {
-          amountMoney: { amount: amountCents, currencyCode: 'USD' },
-          idempotencyKey,
-          referenceId: `POS-${activeOrder.id}`,
-          note: `Order #${activeOrder.id}`,
+      // The active processor adapter owns every card-reading step and drives
+      // our shared UI phases through onPhase, so this screen is identical no
+      // matter which processor the practice uses.
+      const result = await terminal.collect(activeOrder, {
+        onPhase: (ph, msg) => {
+          updatePhase(ph);
+          if (msg !== undefined) setStatusMsg(msg);
         },
-        { mode: 'DEFAULT' }
-      );
+      });
 
+      if (!result.ok) {
+        if (phaseRef.current !== 'error') {
+          showError(result.message || 'Payment failed. Please try again.');
+        }
+        return;
+      }
+
+      // Card charged by the processor — finalize the order on our backend.
       setStatusMsg('Finalizing...');
-      await confirmPayment(activeOrder.id, payment.id, 'tap_to_pay');
+      await confirmPayment(activeOrder.id, result.transactionId, result.paymentMethod || 'tap_to_pay');
 
       isProcessing.current = false;
       setStatusMsg('');
       updatePhase('success');
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     } catch (e) {
-      if (e.message?.includes('cancel') || e.code === 'CANCELED') {
-        showError('Payment was cancelled.');
-      } else {
-        showError(e.message || 'Square payment failed. Please try again.');
-      }
+      const msg = e.response?.data?.error || e.message || 'Failed to complete payment. Please try again.';
+      showError(msg);
     }
   };
 
@@ -370,61 +283,6 @@ export default function TerminalScreen({ navigation }) {
     setStatusMsg('');
     updatePhase('error');
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
-  };
-
-  const initiateTerminalCollection = async (data) => {
-    try {
-      // ── Initializing (checklist 5.7): reader warms up / configures ──
-      if (!terminalReady) {
-        setStatusMsg('Setting up the reader...');
-        const ok = await connectTerminalReader();
-        if (!ok) {
-          if (phaseRef.current !== 'error') {
-            showError('Could not activate Tap to Pay. Make sure you are connected to the internet and try again.');
-          }
-          return;
-        }
-      }
-
-      setStatusMsg('Loading payment details...');
-      const { paymentIntent: pi, error: retrieveError } = await retrievePaymentIntent(data.client_secret);
-      if (retrieveError) {
-        showError('Failed to load payment: ' + retrieveError.message);
-        return;
-      }
-
-      // ── Tapping (checklist 5.6): prompt to hold card ──
-      updatePhase('tapping');
-      setStatusMsg('Hold card near the top of this phone...');
-      const { paymentIntent, error } = await collectPaymentMethod({ paymentIntent: pi });
-      if (error) {
-        if (error.code === 'Canceled') {
-          showError('Card read was cancelled. Please try again.');
-        } else {
-          showError(error.message || 'Could not read card. Please try again.');
-        }
-        return;
-      }
-
-      // ── Processing (checklist 5.8): transaction underway ──
-      updatePhase('processing');
-      setStatusMsg('Processing payment...');
-      const { paymentIntent: confirmed, error: confirmError } = await confirmPaymentIntent({ paymentIntent });
-      if (confirmError) {
-        showError(confirmError.message || 'Payment was declined. Please try a different card.');
-        return;
-      }
-
-      setStatusMsg('Finalizing...');
-      await confirmPayment(activeOrder.id, confirmed.id, 'tap_to_pay');
-
-      isProcessing.current = false;
-      setStatusMsg('');
-      updatePhase('success');
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-    } catch (e) {
-      showError('Payment failed: ' + e.message);
-    }
   };
 
   const handleRetry = () => {
@@ -540,7 +398,7 @@ export default function TerminalScreen({ navigation }) {
             <Text style={[s.statusText, { color: connected ? COLORS.success : COLORS.danger }]}>
               {connected ? 'Online' : 'Offline'}
             </Text>
-            {terminalReady && (
+            {terminal.ready && (
               <>
                 <View style={s.statusSep} />
                 <Text style={s.nfcBadge}>NFC Ready</Text>
