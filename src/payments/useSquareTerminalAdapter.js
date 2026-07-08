@@ -53,8 +53,10 @@ export function useSquareTerminalAdapter() {
           setReadyBoth(true);
           return;
         }
-        const token = info?.publishableKey;
-        const locationId = await fetchSquareLocation();
+        // Square authorizes on-device with the merchant ACCESS TOKEN (not the
+        // application_id — that's the SDK identifier set in native config).
+        const token = info?.accessToken;
+        const locationId = info?.locationId || (await fetchSquareLocation());
         if (token && locationId) {
           await sqAuthorize(token, locationId);
           setReadyBoth(true);
