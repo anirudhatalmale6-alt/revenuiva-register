@@ -57,28 +57,28 @@ Do this per practice that will use Square.
 
 ## Part B — Apple Tap to Pay entitlement for Square as the PSP
 
-Apple grants the Tap to Pay on iPhone entitlement
-(`com.apple.developer.proximity-reader.payment.acceptance`) **in association
-with a Payment Service Provider**. We already hold it for **Stripe**. Square is
-a different PSP, so:
+**RESOLVED (2026-07-08, confirmed by Square's structured breakdown):** No new
+Apple entitlement request is required for Square. Our existing entitlement
+(`com.apple.developer.proximity-reader.payment.acceptance`) already opens the
+iPhone's NFC hardware, and Square routes its encrypted card payloads through
+that same hardware gate. The entitlement is declared **once at the app level**
+(`ios.entitlements` in `app.json`) and is **not** tied to a specific PSP in the
+binary — which is exactly why the `PaymentTerminal` refactor works. So switching
+the active processor to Square needs **zero Apple back-and-forth** and **no**
+App Review, video submission, or UX checklist (unlike the Apple/Stripe path).
 
-1. **Confirm the multi-PSP question with Apple + Square first.** Because our app
-   already has the entitlement granted for Stripe, we need Apple to confirm the
-   same app binary may also process through Square, or whether a separate
-   entitlement note/request is required. Open this with Apple Developer Support
-   (reply on the existing Tap to Pay entitlement thread) **and** with Square's
-   Tap to Pay onboarding contact. **Do not assume it carries over.** This is the
-   one genuinely uncertain step — get it in writing before building.
-2. **Follow Square's Tap to Pay on iPhone onboarding.** Square publishes their
-   own checklist/requirements for apps using their SDK for Tap to Pay (similar
-   to Apple's Getting Started checklist we already completed). Expect to
-   demonstrate the same enablement + checkout UX we recorded for Stripe.
-3. Once Apple confirms the entitlement covers Square for our bundle
-   (`com.revenuivaai.register`), we're clear to ship a Square-processing build.
+Square's **only** technical guards are:
 
-The app already **declares** the entitlement in `app.json`
-(`ios.entitlements`), so no app-config change is needed here — this part is
-purely the Apple/Square approval.
+1. **Register the app's Application Signature (SHA-256 hash)** in the Square
+   Developer Console **before** taking live production payments. This is Square's
+   app-attestation equivalent — it binds production charges to our exact signed
+   binary. One-time, build-time step (see Part C.5). Miss it → live payments are
+   rejected.
+2. **Hardware privacy keys in `Info.plist`** — already present in `app.json`
+   (`NSNFCReaderUsageDescription`, `NSLocationWhenInUseUsageDescription`,
+   `NSBluetoothAlwaysUsageDescription`). ✅ Verified, nothing to add.
+
+No app-config change is needed for the entitlement itself.
 
 ---
 
@@ -103,6 +103,10 @@ Turn it on only for a build that will actually run Square.
    Square module absent — the adapter's `available` flag handles that
    (`require` in try/catch). A quick `expo export` (Metro bundle) should pass
    for both variants.
+5. **Register the Application Signature (SHA-256).** After producing the signed
+   Square-enabled build, compute its SHA-256 hash and register it in the Square
+   Developer Console (Part B.1). Production Square payments are rejected until
+   this hash is on file. Re-register whenever the signing identity changes.
 
 > Why the gating matters: Stripe Terminal and Square's reader SDK both claim
 > NFC/camera/location and their own Tap-to-Pay plumbing. Compiling both
@@ -181,10 +185,16 @@ checkout screen and every other processor are untouched.
 
 ## Open items to confirm before committing to a date
 
-1. **Apple multi-PSP entitlement** — does our existing grant cover Square, or is
-   a separate request needed? (Part B.1 — the critical unknown.)
-2. **Square Tap to Pay availability** for the specific merchant accounts/region.
-3. **Square SDK API specifics** — verify `authorize`/`startPayment` signatures
+1. ~~**Apple multi-PSP entitlement**~~ — **RESOLVED**: no new Apple request;
+   existing entitlement covers Square (Part B). No app review/video/checklist.
+2. **Square OAuth onboarding** — build the per-clinic OAuth flow into the
+   customer onboarding board (grant `PAYMENTS_WRITE_IN_PERSON` +
+   `MERCHANT_PROFILE_READ`; store the returned access token + location id
+   server-side). Backend work; app side already consumes token+location via
+   `gateway-info`.
+3. **Application Signature (SHA-256)** registration in the Square Developer
+   Console at build time (Part B.1 / Part C.5) — the one new production gate.
+4. **Square SDK API specifics** — verify `authorize`/`startPayment` signatures
    against the current SDK version and adjust the adapter if needed.
 
 Everything else is mechanical. The heavy lifting — making the app
