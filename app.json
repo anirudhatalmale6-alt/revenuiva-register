@@ -42,6 +42,7 @@
       "favicon": "./assets/favicon.png"
     },
     "plugins": [
+      "./plugins/withSquareSetup.js",
       [
         "@stripe/stripe-terminal-react-native",
         {
