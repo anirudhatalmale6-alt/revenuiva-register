@@ -27,8 +27,13 @@ export function useStripeTerminalAdapter() {
     onDidChangeConnectionStatus: (status) => setReadyBoth(status === 'connected'),
   });
 
+  const initErrorRef = useRef(null);
+
   const init = useCallback(async () => {
-    await initTerminal();
+    const res = await initTerminal();
+    // A failed initialize() is the usual root cause of a later "could not
+    // activate" — keep it so connect() can report what actually went wrong.
+    initErrorRef.current = res?.error || null;
   }, [initTerminal]);
 
   const connect = useCallback(async () => {
@@ -36,6 +41,12 @@ export function useStripeTerminalAdapter() {
     if (!isOsSupported()) {
       return { ok: false, message: osUnsupportedMessage() };
     }
+    if (initErrorRef.current) {
+      const e = initErrorRef.current;
+      const detail = [e.code, e.message].filter(Boolean).join(': ') || String(e);
+      return { ok: false, message: `Tap to Pay setup failed: ${detail}` };
+    }
+
     const cfg = await readerConfig();
     const { reader, error } = await easyConnect({
       discoveryMethod: 'tapToPay',
@@ -49,13 +60,19 @@ export function useStripeTerminalAdapter() {
       const osErr =
         String(error.code || '').toLowerCase().includes('osversion') ||
         String(error.message || '').toLowerCase().includes('os version');
-      return { ok: false, message: osErr ? osUnsupportedMessage() : undefined, error };
+      if (osErr) {
+        return { ok: false, message: osUnsupportedMessage(), error };
+      }
+      // Surface the real Stripe error rather than a generic "check the
+      // internet" — the code is what makes a Tap to Pay failure diagnosable.
+      const detail = [error.code, error.message].filter(Boolean).join(': ') || String(error);
+      return { ok: false, message: `Tap to Pay: ${detail}`, error };
     }
     if (reader) {
       setReadyBoth(true);
       return { ok: true };
     }
-    return { ok: false };
+    return { ok: false, message: 'Tap to Pay: the reader did not connect and Stripe reported no error.' };
   }, [easyConnect]);
 
   const collect = useCallback(
