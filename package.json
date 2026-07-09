@@ -32,5 +32,14 @@
     "@react-native-community/cli": "^20.2.0",
     "@react-native-community/cli-platform-android": "^20.2.0",
     "patch-package": "^8.0.1"
+  },
+  "expo": {
+    "autolinking": {
+      "android": {
+        "exclude": [
+          "mobile-payments-sdk-react-native"
+        ]
+      }
+    }
   }
 }
