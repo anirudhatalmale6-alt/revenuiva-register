@@ -23,8 +23,16 @@ export function useStripeTerminalAdapter() {
     confirmPaymentIntent,
     retrievePaymentIntent,
     initialize: initTerminal,
+    connectedReader,
   } = useStripeTerminal({
-    onDidChangeConnectionStatus: (status) => setReadyBoth(status === 'connected'),
+    // The SDK reports status as either a bare string or an object depending on
+    // platform/version. Normalise before comparing, otherwise a live reader
+    // reads as disconnected and the next connect() hits ALREADY_CONNECTED.
+    onDidChangeConnectionStatus: (status) => {
+      const value = typeof status === 'string' ? status : status?.status;
+      if (value === 'connected') setReadyBoth(true);
+      else if (value === 'notConnected' || value === 'disconnected') setReadyBoth(false);
+    },
   });
 
   const initErrorRef = useRef(null);
@@ -40,6 +48,12 @@ export function useStripeTerminalAdapter() {
     // Guard for iOS versions that can't run Tap to Pay (checklist 1.4).
     if (!isOsSupported()) {
       return { ok: false, message: osUnsupportedMessage() };
+    }
+    // The SDK itself is the source of truth for an existing reader. Calling
+    // easyConnect() while one is attached fails with ALREADY_CONNECTED_TO_READER.
+    if (connectedReader) {
+      setReadyBoth(true);
+      return { ok: true };
     }
     if (initErrorRef.current) {
       const e = initErrorRef.current;
@@ -57,6 +71,11 @@ export function useStripeTerminalAdapter() {
       merchantDisplayName: cfg.merchantDisplayName,
     });
     if (error) {
+      // A reader was already attached — that is the state we wanted anyway.
+      if (String(error.code || '').toUpperCase() === 'ALREADY_CONNECTED_TO_READER') {
+        setReadyBoth(true);
+        return { ok: true };
+      }
       const osErr =
         String(error.code || '').toLowerCase().includes('osversion') ||
         String(error.message || '').toLowerCase().includes('os version');
@@ -73,12 +92,12 @@ export function useStripeTerminalAdapter() {
       return { ok: true };
     }
     return { ok: false, message: 'Tap to Pay: the reader did not connect and Stripe reported no error.' };
-  }, [easyConnect]);
+  }, [easyConnect, connectedReader]);
 
   const collect = useCallback(
     async (order, { onPhase }) => {
       // ── Initializing (checklist 5.7): make sure the reader is live ──
-      if (!readyRef.current) {
+      if (!readyRef.current && !connectedReader) {
         onPhase(PHASES.INITIALIZING, 'Setting up the reader...');
         const c = await connect();
         if (!c.ok) {
@@ -126,7 +145,7 @@ export function useStripeTerminalAdapter() {
 
       return { ok: true, transactionId: confirmed.id, paymentMethod: 'tap_to_pay' };
     },
-    [connect, retrievePaymentIntent, collectPaymentMethod, confirmPaymentIntent]
+    [connect, connectedReader, retrievePaymentIntent, collectPaymentMethod, confirmPaymentIntent]
   );
 
   return { provider: 'stripe', ready, available: true, init, connect, collect };
