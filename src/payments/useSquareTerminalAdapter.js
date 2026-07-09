@@ -36,15 +36,32 @@ async function fetchSquareLocation() {
   }
 }
 
+/**
+ * Square takes the platform's cut client-side, via app_fee_money on the payment
+ * itself (Stripe does it server-side on the PaymentIntent, so its adapter needs
+ * none of this). Returns null when no fee applies, so the payload stays clean.
+ */
+function appFeeMoney(feeInfo, amountCents, currencyCode) {
+  if (!feeInfo?.enabled || !(feeInfo.percent > 0) || amountCents < 100) return null;
+  const fee = Math.round(amountCents * (feeInfo.percent / 100));
+  if (fee <= 0 || fee >= amountCents) return null;
+  return { amount: fee, currencyCode };
+}
+
 export function useSquareTerminalAdapter() {
   const [ready, setReady] = useState(false);
   const readyRef = useRef(false);
+  const feeRef = useRef({ enabled: false, percent: 0 });
   const setReadyBoth = (v) => {
     readyRef.current = v;
     setReady(v);
   };
 
   const init = useCallback(async (info) => {
+    feeRef.current = {
+      enabled: !!info?.platformFeeEnabled,
+      percent: Number(info?.platformFeePercent) || 0,
+    };
     const sq = loadSquare();
     if (!sq) return;
     try {
@@ -93,20 +110,23 @@ export function useSquareTerminalAdapter() {
       const PromptMode = sq.PromptMode || {};
       const AddMethod = sq.AdditionalPaymentMethodType || {};
 
+      const currencyCode = CurrencyCode.USD ?? 'USD';
+      const paymentParams = {
+        amountMoney: { amount: amountCents, currencyCode },
+        processingMode: ProcessingMode.ONLINE_ONLY ?? 0,
+        idempotencyKey: `pos-${order.id}-${Date.now()}`,
+        referenceId: `POS-${order.id}`,
+        note: `Order #${order.id}`,
+      };
+
+      const fee = appFeeMoney(feeRef.current, amountCents, currencyCode);
+      if (fee) paymentParams.appFeeMoney = fee;
+
       onPhase(PHASES.TAPPING, 'Follow the prompt to take payment...');
-      const payment = await sq.startPayment(
-        {
-          amountMoney: { amount: amountCents, currencyCode: CurrencyCode.USD ?? 'USD' },
-          processingMode: ProcessingMode.ONLINE_ONLY ?? 0,
-          idempotencyKey: `pos-${order.id}-${Date.now()}`,
-          referenceId: `POS-${order.id}`,
-          note: `Order #${order.id}`,
-        },
-        {
-          additionalMethods: [AddMethod.ALL ?? 'ALL'],
-          mode: PromptMode.DEFAULT ?? 0,
-        }
-      );
+      const payment = await sq.startPayment(paymentParams, {
+        additionalMethods: [AddMethod.ALL ?? 'ALL'],
+        mode: PromptMode.DEFAULT ?? 0,
+      });
 
       onPhase(PHASES.PROCESSING, 'Finalizing...');
       return { ok: true, transactionId: payment?.id, paymentMethod: 'tap_to_pay' };

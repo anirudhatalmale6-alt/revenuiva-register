@@ -20,10 +20,24 @@ export async function getProviderInfo() {
       // Square only: the merchant access token the Mobile Payments SDK
       // authorizes with on-device. Stripe leaves this null (uses connection tokens).
       accessToken: data.access_token || null,
+      // Platform fee. Square needs it here because app_fee_money is set on the
+      // device; Stripe applies its fee server-side and ignores these.
+      platformFeeEnabled: !!data.platform_fee_enabled,
+      platformFeePercent: Number(data.platform_fee_percent) || 0,
+      currency: data.currency || 'USD',
     };
     return cachedProvider;
   } catch (e) {
-    return { provider: 'stripe', supportsTapToPay: true, publishableKey: null, locationId: null, accessToken: null };
+    return {
+      provider: 'stripe',
+      supportsTapToPay: true,
+      publishableKey: null,
+      locationId: null,
+      accessToken: null,
+      platformFeeEnabled: false,
+      platformFeePercent: 0,
+      currency: 'USD',
+    };
   }
 }
 
