@@ -1,0 +1,10 @@
+diff --git a/node_modules/mobile-payments-sdk-react-native/android/gradle.properties b/node_modules/mobile-payments-sdk-react-native/android/gradle.properties
+index cca2157..f773eb4 100644
+--- a/node_modules/mobile-payments-sdk-react-native/android/gradle.properties
++++ b/node_modules/mobile-payments-sdk-react-native/android/gradle.properties
+@@ -1,4 +1,4 @@
+-MobilePaymentsSdkReactNative_kotlinVersion=2.2.21
++MobilePaymentsSdkReactNative_kotlinVersion=2.3.20
+ MobilePaymentsSdkReactNative_minSdkVersion=28
+ MobilePaymentsSdkReactNative_targetSdkVersion=35
+ MobilePaymentsSdkReactNative_compileSdkVersion=35
