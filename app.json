@@ -57,7 +57,10 @@
             "compileSdkVersion": 36,
             "targetSdkVersion": 36,
             "minSdkVersion": 28,
-            "kotlinVersion": "2.2.21"
+            "kotlinVersion": "2.2.21",
+            "extraMavenRepos": [
+              "https://sdk.squareup.com/public/android/"
+            ]
           },
           "ios": {
             "deploymentTarget": "16.4"
